@@ -1,0 +1,16 @@
+[
+  {
+    "name": "ExampleToken1",
+    "symbol": "XTK1",
+    "creator": "6x402abcd123",
+    "volume": "3400",
+    "created": "2025-10-27"
+  },
+  {
+    "name": "ExampleToken2",
+    "symbol": "XTK2",
+    "creator": "6x402efgh456",
+    "volume": "2200",
+    "created": "2025-10-26"
+  }
+]
