@@ -1,8 +1,11 @@
-fetch('data.json')
+const feed = document.getElementById('feed');
+
+// Fetch new tokens from Pump.fun API
+fetch('https://api.pump.fun/v1/tokens?protocol=x402')
   .then(res => res.json())
-  .then(tokens => {
-    const feed = document.getElementById('feed');
-    tokens.reverse().forEach(t => {
+  .then(data => {
+    feed.innerHTML = ''; // Clear previous tokens
+    data.tokens.reverse().forEach(t => {
       const div = document.createElement('div');
       div.className = 'token';
       div.innerHTML = `
@@ -13,4 +16,7 @@ fetch('data.json')
       feed.appendChild(div);
     });
   })
-  .catch(err => console.error(err));
+  .catch(err => {
+    feed.innerHTML = "<p>Unable to fetch tokens automatically.</p>";
+    console.error(err);
+  });
