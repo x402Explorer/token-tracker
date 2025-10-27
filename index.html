@@ -125,8 +125,8 @@
 
     async function fetchTokens() {
       try {
-        // Fetch recent tokens
-        const response = await fetch('https://data.solanatracker.io/recent', {
+        // Using search endpoint with empty query to fetch all tokens
+        const response = await fetch('https://data.solanatracker.io/search?name=&symbol=', {
           headers: { 'x-api-key': trackerApiKey }
         });
         const data = await response.json();
