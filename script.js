@@ -2,56 +2,29 @@ const feed = document.getElementById('feed');
 const sortNewestBtn = document.getElementById('sortNewest');
 const sortVolumeBtn = document.getElementById('sortVolume');
 
-const moralisApiKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6ImQ2ZjViOWRkLTc0YzMtNDNjZi1iMjlkLTYxZTA0MWQxOTdiNSIsIm9yZ0lkIjoiNDc4MjI5IiwidXNlcklkIjoiNDkxOTk4IiwidHlwZUlkIjoiOTE3ZDFiZjAtYmU4Ni00MzdkLTllMTgtZmZjYmY3ODA0ZTFlIiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NjE2MDMxNTUsImV4cCI6NDkxNzM2MzE1NX0.NBoV2mLrwOsVs44jb6tsvLb8nRMRdsIsGt4ui2HbCyw';
-
+const trackerApiKey = 'c89d3b53-74e2-42ac-8c0c-8b4f393d60bb';
 let allTokens = [];
 let currentSort = 'newest';
 
-// Load preloaded tokens
-async function loadPreloadedTokens() {
+// Fetch tokens from Solana Tracker API
+async function fetchTokens() {
   try {
-    const response = await fetch('preload.json');
-    const preload = await response.json();
-    allTokens.push(...preload);
-    sortAndDisplay();
-  } catch (err) {
-    console.error('Error loading preloaded tokens', err);
-  }
-}
-
-// Live fetch tokens (Moralis)
-async function fetchTokensPaginated(cursor = null) {
-  try {
-    const url = cursor 
-      ? `https://solana-gateway.moralis.io/nft/mainnet/all?cursor=${cursor}` 
-      : 'https://solana-gateway.moralis.io/nft/mainnet/all';
-
-    const response = await fetch(url, {
-      headers: { 'X-API-Key': moralisApiKey }
+    const response = await fetch('https://data.solanatracker.io/search?name=x402&symbol=x402', {
+      headers: { 'x-api-key': trackerApiKey }
     });
     const data = await response.json();
-
-    const filteredTokens = data.result.filter(token =>
-      (token.name && token.name.toLowerCase().includes('x402')) ||
-      (token.symbol && token.symbol.toLowerCase().includes('x402'))
-    );
-
-    allTokens.push(...filteredTokens);
-
-    if (data.cursor) {
-      return fetchTokensPaginated(data.cursor);
-    } else {
-      sortAndDisplay();
-    }
+    allTokens = data.tokens || [];
+    sortAndDisplay();
   } catch (error) {
     console.error('Error fetching tokens:', error);
+    feed.innerHTML = '<p>Unable to fetch tokens. Check your API key or network.</p>';
   }
 }
 
 // Sorting
 function sortAndDisplay() {
   if (currentSort === 'newest') {
-    allTokens.sort((a, b) => new Date(b.created) - new Date(a.created));
+    allTokens.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   } else if (currentSort === 'volume') {
     allTokens.sort((a, b) => (b.volume || 0) - (a.volume || 0));
   }
@@ -61,13 +34,17 @@ function sortAndDisplay() {
 // Display tokens
 function displayTokens(tokens) {
   feed.innerHTML = '';
+  if (tokens.length === 0) {
+    feed.innerHTML = '<p>No x402 tokens found.</p>';
+    return;
+  }
   tokens.forEach(token => {
     const tokenElement = document.createElement('div');
     tokenElement.className = 'token';
     tokenElement.innerHTML = `
       <strong>${token.name || 'N/A'} (${token.symbol || 'N/A'})</strong><br>
       <span class="small">Creator: ${token.creator || 'N/A'}</span><br>
-      <span class="small">Volume: ${token.volume || 'N/A'} • Created: ${token.created || 'N/A'}</span>
+      <span class="small">Volume: ${token.volume || 'N/A'} • Created: ${token.createdAt || 'N/A'}</span>
     `;
     feed.appendChild(tokenElement);
   });
@@ -84,10 +61,9 @@ sortVolumeBtn.addEventListener('click', () => {
 });
 
 // Initial load
-loadPreloadedTokens();
-fetchTokensPaginated();
+fetchTokens();
 
 // Auto-refresh every 5 minutes
 setInterval(() => {
-  fetchTokensPaginated();
+  fetchTokens();
 }, 300000);
