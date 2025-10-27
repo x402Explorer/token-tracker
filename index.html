@@ -4,49 +4,87 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>x402 Explorer</title>
-  <link rel="stylesheet" href="style.css">
   <style>
+    /* Body & general */
     body {
-      background-color: #121212;
-      color: #ffffff;
-      font-family: Arial, sans-serif;
-      padding: 20px;
+      margin: 0;
+      padding: 1rem;
+      background: #0f0f13;
+      color: #fff;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
+
     h1 {
+      color: #55ff99;
       text-align: center;
       margin-bottom: 20px;
+      text-shadow: 0 0 8px #55ff99;
     }
-    .token {
-      background-color: #1e1e1e;
-      border-radius: 8px;
-      padding: 10px;
-      margin-bottom: 10px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.5);
-    }
-    .small {
-      color: #aaaaaa;
-      font-size: 0.85em;
-    }
-    button {
-      background-color: #333;
+
+    /* Buttons */
+    .btn {
+      background-color: #222;
       color: #fff;
       border: none;
-      padding: 8px 12px;
-      border-radius: 6px;
+      padding: 10px 16px;
+      border-radius: 10px;
       cursor: pointer;
-      font-size: 0.9em;
-      margin-right: 5px;
+      font-size: 1rem;
+      margin: 0 5px;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
     }
-    button:hover {
-      background-color: #555;
+    .btn:hover {
+      background-color: #55ff99;
+      color: #000;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.6);
     }
+
+    /* Feed container */
+    #feed {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 15px;
+      margin-top: 20px;
+    }
+
+    /* Token card */
+    .token {
+      background: #1a1a1f;
+      border-radius: 15px;
+      padding: 15px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      perspective: 1000px;
+    }
+    .token:hover {
+      transform: translateY(-6px) rotateX(2deg) rotateY(2deg);
+      box-shadow: 0 12px 30px rgba(0,0,0,0.8);
+    }
+
+    .token strong {
+      font-size: 1.1rem;
+      display: block;
+      margin-bottom: 5px;
+      color: #55ff99;
+    }
+
+    .small {
+      color: #aaa;
+      font-size: 0.8rem;
+      display: block;
+      margin: 2px 0;
+    }
+
+    /* Responsive */
     @media (max-width: 600px) {
-      body {
-        padding: 10px;
+      .btn {
+        padding: 8px 12px;
+        font-size: 0.85rem;
       }
-      button {
-        padding: 6px 10px;
-        font-size: 0.8em;
+      #feed {
+        grid-template-columns: 1fr;
       }
     }
   </style>
@@ -55,19 +93,77 @@
 
   <h1>x402 Explorer</h1>
 
-  <!-- Sort buttons -->
-  <div style="margin-bottom: 15px;">
-    <button id="sortNewest">Sort by Newest</button>
-    <button id="sortVolume">Sort by Volume</button>
+  <div style="text-align:center; margin-bottom: 15px;">
+    <button class="btn" id="sortNewest">Sort by Newest</button>
+    <button class="btn" id="sortVolume">Sort by Volume</button>
   </div>
 
-  <!-- Token feed -->
   <div id="feed">
     <p>Loading tokens...</p>
   </div>
 
-  <!-- Script -->
-  <script src="script.js"></script>
+  <script>
+    const feed = document.getElementById('feed');
+    const sortNewestBtn = document.getElementById('sortNewest');
+    const sortVolumeBtn = document.getElementById('sortVolume');
+
+    const trackerApiKey = 'c89d3b53-74e2-42ac-8c0c-8b4f393d60bb';
+    let allTokens = [];
+    let currentSort = 'newest';
+
+    async function fetchTokens() {
+      try {
+        const response = await fetch('https://data.solanatracker.io/search?name=x402&symbol=x402', {
+          headers: { 'x-api-key': trackerApiKey }
+        });
+        const data = await response.json();
+        allTokens = data.tokens || [];
+        sortAndDisplay();
+      } catch (error) {
+        console.error('Error fetching tokens:', error);
+        feed.innerHTML = '<p>Unable to fetch tokens. Check your API key or network.</p>';
+      }
+    }
+
+    function sortAndDisplay() {
+      if (currentSort === 'newest') {
+        allTokens.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      } else if (currentSort === 'volume') {
+        allTokens.sort((a, b) => (b.volume || 0) - (a.volume || 0));
+      }
+      displayTokens(allTokens);
+    }
+
+    function displayTokens(tokens) {
+      feed.innerHTML = '';
+      if (tokens.length === 0) {
+        feed.innerHTML = '<p>No x402 tokens found.</p>';
+        return;
+      }
+      tokens.forEach(token => {
+        const tokenElement = document.createElement('div');
+        tokenElement.className = 'token';
+        tokenElement.innerHTML = `
+          <strong>${token.name || 'N/A'} (${token.symbol || 'N/A'})</strong>
+          <span class="small">Creator: ${token.creator || 'N/A'}</span>
+          <span class="small">Volume: ${token.volume || 'N/A'} • Created: ${token.createdAt || 'N/A'}</span>
+        `;
+        feed.appendChild(tokenElement);
+      });
+    }
+
+    sortNewestBtn.addEventListener('click', () => {
+      currentSort = 'newest';
+      sortAndDisplay();
+    });
+    sortVolumeBtn.addEventListener('click', () => {
+      currentSort = 'volume';
+      sortAndDisplay();
+    });
+
+    fetchTokens();
+    setInterval(() => { fetchTokens(); }, 300000); // Auto-refresh every 5 min
+  </script>
 
 </body>
 </html>
