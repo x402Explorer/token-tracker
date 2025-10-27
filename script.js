@@ -2,11 +2,24 @@ const feed = document.getElementById('feed');
 const sortNewestBtn = document.getElementById('sortNewest');
 const sortVolumeBtn = document.getElementById('sortVolume');
 
-const moralisApiKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jOWRkLTc0YzMtNDNjZi1iMjlkLTYxZTA0MWQxOTdiNSIsIm9yZ0lkIjoiNDc4MjI5IiwidXNlcklkIjoiNDkxOTk4IiwidHlwZUlkIjoiOTE3ZDFiZjAtYmU4Ni00MzdkLTllMTgtZmZjYmY3ODA0ZTFlIiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NjE2MDMxNTUsImV4cCI6NDkxNzM2MzE1NX0.NBoV2mLrwOsVs44jb6tsvLb8nRMRdsIsGt4ui2HbCyw';
+const moralisApiKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6ImQ2ZjViOWRkLTc0YzMtNDNjZi1iMjlkLTYxZTA0MWQxOTdiNSIsIm9yZ0lkIjoiNDc4MjI5IiwidXNlcklkIjoiNDkxOTk4IiwidHlwZUlkIjoiOTE3ZDFiZjAtYmU4Ni00MzdkLTllMTgtZmZjYmY3ODA0ZTFlIiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NjE2MDMxNTUsImV4cCI6NDkxNzM2MzE1NX0.NBoV2mLrwOsVs44jb6tsvLb8nRMRdsIsGt4ui2HbCyw';
 
 let allTokens = [];
-let currentSort = 'newest'; // Default sort
+let currentSort = 'newest';
 
+// Load preloaded tokens
+async function loadPreloadedTokens() {
+  try {
+    const response = await fetch('preload.json');
+    const preload = await response.json();
+    allTokens.push(...preload);
+    sortAndDisplay();
+  } catch (err) {
+    console.error('Error loading preloaded tokens', err);
+  }
+}
+
+// Live fetch tokens (Moralis)
 async function fetchTokensPaginated(cursor = null) {
   try {
     const url = cursor 
@@ -18,7 +31,6 @@ async function fetchTokensPaginated(cursor = null) {
     });
     const data = await response.json();
 
-    // Filter tokens with "x402" in name or symbol
     const filteredTokens = data.result.filter(token =>
       (token.name && token.name.toLowerCase().includes('x402')) ||
       (token.symbol && token.symbol.toLowerCase().includes('x402'))
@@ -33,10 +45,10 @@ async function fetchTokensPaginated(cursor = null) {
     }
   } catch (error) {
     console.error('Error fetching tokens:', error);
-    feed.innerHTML = '<p>Unable to fetch tokens.</p>';
   }
 }
 
+// Sorting
 function sortAndDisplay() {
   if (currentSort === 'newest') {
     allTokens.sort((a, b) => new Date(b.created) - new Date(a.created));
@@ -46,6 +58,7 @@ function sortAndDisplay() {
   displayTokens(allTokens);
 }
 
+// Display tokens
 function displayTokens(tokens) {
   feed.innerHTML = '';
   tokens.forEach(token => {
@@ -60,22 +73,21 @@ function displayTokens(tokens) {
   });
 }
 
-// Event listeners for sort buttons
+// Sort buttons
 sortNewestBtn.addEventListener('click', () => {
   currentSort = 'newest';
   sortAndDisplay();
 });
-
 sortVolumeBtn.addEventListener('click', () => {
   currentSort = 'volume';
   sortAndDisplay();
 });
 
-// Initial fetch
+// Initial load
+loadPreloadedTokens();
 fetchTokensPaginated();
 
 // Auto-refresh every 5 minutes
 setInterval(() => {
-  allTokens = [];
   fetchTokensPaginated();
 }, 300000);
