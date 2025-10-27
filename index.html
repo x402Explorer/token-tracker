@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>x402 Explorer</title>
+  <title>x402 Explorer – AI Test</title>
   <style>
     /* Body & general */
     body {
@@ -91,7 +91,7 @@
 </head>
 <body>
 
-  <h1>x402 Explorer</h1>
+  <h1>x402 Explorer – AI Test</h1>
 
   <div style="text-align:center; margin-bottom: 15px;">
     <button class="btn" id="sortNewest">Sort by Newest</button>
@@ -113,7 +113,8 @@
 
     async function fetchTokens() {
       try {
-        const response = await fetch('https://data.solanatracker.io/search?name=x402&symbol=x402', {
+        // Search for AI in name or symbol
+        const response = await fetch('https://data.solanatracker.io/search?name=AI&symbol=AI', {
           headers: { 'x-api-key': trackerApiKey }
         });
         const data = await response.json();
@@ -137,7 +138,7 @@
     function displayTokens(tokens) {
       feed.innerHTML = '';
       if (tokens.length === 0) {
-        feed.innerHTML = '<p>No x402 tokens found.</p>';
+        feed.innerHTML = '<p>No AI tokens found.</p>';
         return;
       }
       tokens.forEach(token => {
