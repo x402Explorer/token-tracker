@@ -3,34 +3,79 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Pump.Fun New Tokens Explorer</title>
+<title>Pump.Fun Tokens Explorer</title>
 <style>
-body {margin:0;font-family:Arial;background:#0f0f13;color:#fff;padding:12px;}
-h1{text-align:center;margin-bottom:16px;color:#55ff99;}
-.controls{display:flex;justify-content:center;gap:12px;margin-bottom:12px;}
-.select-sort{background:#1b1b1f;color:#fff;border:1px solid rgba(255,255,255,0.03);border-radius:6px;padding:6px 10px;}
-.token-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;}
-.card{background:#1b1b1f;border-radius:12px;padding:12px;border:1px solid rgba(255,255,255,0.03);transition:transform 0.15s;}
-.card:hover{transform:translateY(-4px);box-shadow:0 10px 30px rgba(0,0,0,0.5);}
-.token-header{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
-.logo{width:48px;height:48px;border-radius:10px;object-fit:cover;background:#07070a;}
-.title{font-weight:700;font-size:1.1em;}
-.small{font-size:12px;color:#aaa;}
-.copy-btn{cursor:pointer;color:#55ff99;margin-left:6px;}
-.metric{margin-top:6px;}
-.social-links{margin-top:6px;}
-.social-links a{margin-right:8px;color:#55ff99;text-decoration:none;}
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #0f0f13;
+  color: #fff;
+  padding: 12px;
+}
+h1 {
+  text-align: center;
+  margin-bottom: 16px;
+  color: #55ff99;
+}
+.controls {
+  display:flex;
+  justify-content:center;
+  gap:12px;
+  margin-bottom:12px;
+  flex-wrap:wrap;
+}
+.select-sort, .select-time {
+  background:#1b1b1f;
+  color:#fff;
+  border:1px solid rgba(255,255,255,0.03);
+  border-radius:6px;
+  padding:6px 10px;
+}
+.token-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill,minmax(320px,1fr));
+  gap: 12px;
+}
+.card {
+  background: #1b1b1f;
+  border-radius: 12px;
+  padding: 12px;
+  border: 1px solid rgba(255,255,255,0.03);
+  transition: transform 0.15s;
+}
+.card:hover { transform: translateY(-4px); box-shadow:0 10px 30px rgba(0,0,0,0.5);}
+.token-header {
+  display:flex; align-items:center; gap:10px; margin-bottom:8px;
+}
+.logo { width:48px; height:48px; border-radius:10px; object-fit:cover; background:#07070a;}
+.title { font-weight:700; font-size:1.1em;}
+.small { font-size:12px; color:#aaa;}
+.copy-btn {cursor:pointer; color:#55ff99; margin-left:6px;}
+.metric {margin-top:6px;}
+.social-links {margin-top:6px;}
+.social-links a {margin-right:8px;color:#55ff99;text-decoration:none;}
 </style>
 </head>
 <body>
 
-<h1>Pump.Fun New Tokens</h1>
+<h1>Pump.Fun Tokens Explorer</h1>
 <div class="controls">
   <label>Sort by:
     <select id="sortSelect" class="select-sort">
       <option value="created">Newest</option>
       <option value="marketCap">Market Cap</option>
       <option value="holders">Holders</option>
+    </select>
+  </label>
+  <label>Time window:
+    <select id="timeFilter" class="select-time">
+      <option value="1h">1h</option>
+      <option value="4h">4h</option>
+      <option value="8h">8h</option>
+      <option value="12h">12h</option>
+      <option value="24h">24h</option>
+      <option value="1w">1 week</option>
+      <option value="1m">1 month</option>
     </select>
   </label>
 </div>
@@ -43,6 +88,7 @@ h1{text-align:center;margin-bottom:16px;color:#55ff99;}
 const API_KEY = 'e6d255f4-d3ce-457f-b149-883b2f3e93e2';
 const tokenGrid = document.getElementById('tokenGrid');
 const sortSelect = document.getElementById('sortSelect');
+const timeFilter = document.getElementById('timeFilter');
 let allTokens = [];
 
 function formatAge(ms){
@@ -53,36 +99,48 @@ function formatAge(ms){
   return `${h}h ${m}m ${s}s`;
 }
 
+function getTimeWindowMs(value){
+  switch(value){
+    case '1h': return 1*3600*1000;
+    case '4h': return 4*3600*1000;
+    case '8h': return 8*3600*1000;
+    case '12h': return 12*3600*1000;
+    case '24h': return 24*3600*1000;
+    case '1w': return 7*24*3600*1000;
+    case '1m': return 30*24*3600*1000;
+    default: return Infinity;
+  }
+}
+
 async function fetchTokens(){
   try{
-    const r = await fetch('https://data.solanatracker.io/search?market=pumpfun&limit=50', {
+    const r = await fetch('https://data.solanatracker.io/search?market=pumpfun&limit=100', {
       headers: { 'x-api-key': API_KEY }
     });
     const j = await r.json();
     const tokens = j.data || [];
     const now = Date.now();
-    // only new tokens <1h
-    allTokens = tokens.filter(t => t.createdAt && (now - t.createdAt)<3600000);
-    allTokens.forEach(t=>t.ageMs = now - t.createdAt);
-    sortAndRender();
+    allTokens = tokens.map(t=>{ t.ageMs = now - t.createdAt; return t; });
+    applyFiltersAndSort();
   }catch(e){
     console.error('fetchTokens error', e);
     tokenGrid.innerHTML = `<p class="small">Error fetching tokens: ${e.message||e}</p>`;
   }
 }
 
-function sortAndRender(){
+function applyFiltersAndSort(){
+  const windowMs = getTimeWindowMs(timeFilter.value);
+  let filtered = allTokens.filter(t => t.ageMs <= windowMs);
   const sortBy = sortSelect.value;
-  let sorted = [...allTokens];
-  if(sortBy==='marketCap'){ sorted.sort((a,b)=>(b.marketCapUsd||0)-(a.marketCapUsd||0)); }
-  else if(sortBy==='created'){ sorted.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)); }
-  else if(sortBy==='holders'){ sorted.sort((a,b)=>(b.holders||0)-(a.holders||0)); }
-  renderTokens(sorted);
+  if(sortBy==='marketCap'){ filtered.sort((a,b)=>(b.marketCapUsd||0)-(a.marketCapUsd||0)); }
+  else if(sortBy==='created'){ filtered.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)); }
+  else if(sortBy==='holders'){ filtered.sort((a,b)=>(b.holders||0)-(a.holders||0)); }
+  renderTokens(filtered);
 }
 
 function renderTokens(tokens){
   tokenGrid.innerHTML = '';
-  if(!tokens.length){ tokenGrid.innerHTML = `<p class="small">No new tokens in the last hour.</p>`; return; }
+  if(!tokens.length){ tokenGrid.innerHTML = `<p class="small">No tokens in this time window.</p>`; return; }
   tokens.forEach(t=>{
     const card = document.createElement('div'); card.className='card';
     const mintShort = (t.mint||'').slice(0,6)+'...'+(t.mint||'').slice(-6);
@@ -121,7 +179,8 @@ function renderTokens(tokens){
   });
 }
 
-sortSelect.onchange = sortAndRender;
+sortSelect.onchange = applyFiltersAndSort;
+timeFilter.onchange = applyFiltersAndSort;
 
 fetchTokens();
 setInterval(fetchTokens,5000);
