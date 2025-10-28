@@ -1,177 +1,138 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="it">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>PumpFun + SolanaTracker Explorer</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Solana Dashboard — Wallet & Hot Pools</title>
 <style>
-body{margin:0;padding:12px;font-family:Arial;background:#0f0f13;color:#fff;}
-h1{text-align:center;margin-bottom:16px;color:#55ff99;}
-.controls{display:flex;justify-content:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;}
-.select-sort,.select-time{background:#1b1b1f;color:#fff;border:1px solid rgba(255,255,255,0.03);border-radius:6px;padding:6px 10px;}
-.token-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;}
-.card{background:#1b1b1f;border-radius:12px;padding:12px;border:1px solid rgba(255,255,255,0.03);transition: transform 0.15s;}
-.card:hover{transform:translateY(-4px);box-shadow:0 10px 30px rgba(0,0,0,0.5);}
-.token-header{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
-.logo{width:48px;height:48px;border-radius:10px;object-fit:cover;background:#07070a;}
-.title{font-weight:700;font-size:1.1em;}
+body {
+  margin:0; font-family:Arial, sans-serif; background:#0f0f13; color:#fff; padding:16px;
+}
+h1,h2{color:#55ff99;text-align:center;}
+input, button, select {padding:6px 10px; border-radius:6px; border:none; margin:4px;}
+button{background:#1b1b1f; color:#fff; cursor:pointer;}
+button:hover{background:#333;}
+section{margin-bottom:16px;}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;}
+.card{background:#1b1b1f; padding:12px; border-radius:12px; border:1px solid rgba(255,255,255,0.03);}
+.token-header{display:flex; align-items:center; gap:10px; margin-bottom:8px;}
+.logo{width:44px;height:44px;border-radius:10px;object-fit:cover;background:#07070a;}
 .small{font-size:12px;color:#aaa;}
 .copy-btn{cursor:pointer;color:#55ff99;margin-left:6px;}
-.metric{margin-top:6px;}
-.social-links a{margin-right:8px;color:#55ff99;text-decoration:none;}
 </style>
 </head>
 <body>
 
-<h1>PumpFun + SolanaTracker Explorer</h1>
-<div class="controls">
-  <label>Sort by:
-    <select id="sortSelect" class="select-sort">
-      <option value="created">Newest</option>
-      <option value="marketCap">Market Cap</option>
-      <option value="holders">Holders</option>
-    </select>
-  </label>
-  <label>Time filter:
-    <select id="timeSelect" class="select-time">
-      <option value="1h">1h</option>
-      <option value="4h">4h</option>
-      <option value="8h">8h</option>
-      <option value="12h">12h</option>
-      <option value="24h">24h</option>
-      <option value="7d">1w</option>
-      <option value="30d">1M</option>
-    </select>
-  </label>
-</div>
+<h1>Solana Dashboard</h1>
 
-<div id="tokenGrid" class="token-grid">
-  <p>Loading tokens...</p>
-</div>
+<section>
+  <h2>Wallet Tracker</h2>
+  <input id="walletInput" placeholder="Inserisci indirizzo wallet Solana" style="width:70%"/>
+  <button id="fetchWallet">Mostra Token</button>
+  <div id="walletGrid" class="grid"><p class="small">Inserisci un wallet e premi "Mostra Token"</p></div>
+</section>
 
+<section>
+  <h2>Hot Pools</h2>
+  <div id="hotGrid" class="grid"><p class="small">Caricamento hot pools...</p></div>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/@solana/web3.js@1.85.2/lib/index.iife.min.js"></script>
 <script>
-const PUMP_API_KEY = 'e6d255f4-d3ce-457f-b149-883b2f3e93e2';
-const TRACKER_API_KEY = 'c89d3b53-74e2-42ac-8c0c-8b4f393d60bb';
-const tokenGrid = document.getElementById('tokenGrid');
-const sortSelect = document.getElementById('sortSelect');
-const timeSelect = document.getElementById('timeSelect');
-let allTokens = [];
+const walletGrid = document.getElementById('walletGrid');
+const hotGrid = document.getElementById('hotGrid');
+const walletInput = document.getElementById('walletInput');
+const fetchWalletBtn = document.getElementById('fetchWallet');
 
-function formatAge(ms){
-  let totalSec=Math.floor(ms/1000);
-  const h=Math.floor(totalSec/3600); totalSec%=3600;
-  const m=Math.floor(totalSec/60); totalSec%=60;
-  const s=totalSec;
-  return `${h}h ${m}m ${s}s`;
-}
+const connection = new solanaWeb3.Connection(solanaWeb3.clusterApiUrl('mainnet-beta'), 'confirmed');
+const REFRESH_MS = 15000; // auto-refresh ogni 15 sec
 
-function timeToMs(value){
-  const now=Date.now();
-  switch(value){
-    case '1h': return now-3600000;
-    case '4h': return now-14400000;
-    case '8h': return now-28800000;
-    case '12h': return now-43200000;
-    case '24h': return now-86400000;
-    case '7d': return now-604800000;
-    case '30d': return now-2592000000;
-    default: return 0;
-  }
-}
+// Helper: format numero
+function fmt(v){ return '$'+(v||0).toLocaleString(undefined,{maximumFractionDigits:2}); }
+function copyToClipboard(text){ navigator.clipboard.writeText(text); }
 
-async function fetchTokens(){
+// -------- WALLET --------
+async function fetchWalletTokens(walletAddr){
+  walletGrid.innerHTML = '<p class="small">Caricamento token...</p>';
   try{
-    // Step1: get tokens from Pump.fun
-    const rPump = await fetch('https://data.solanatracker.io/search?market=pumpfun&limit=10000',{
-      headers:{'x-api-key':PUMP_API_KEY}
-    });
-    const jPump = await rPump.json();
-    const tokensPump = jPump.data || [];
-    const now = Date.now();
-    allTokens = tokensPump.map(t=>{
-      t.ageMs=now-(t.createdAt||now);
-      return t;
-    });
+    const pubKey = new solanaWeb3.PublicKey(walletAddr);
+    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(pubKey, {programId: solanaWeb3.TOKEN_PROGRAM_ID});
+    if(!tokenAccounts.value.length){ walletGrid.innerHTML='<p class="small">Nessun token trovato.</p>'; return; }
 
-    // Step2: enrich with SolanaTracker for metrics
-    for(const t of allTokens){
-      try{
-        const rTrack = await fetch(`https://data.solanatracker.io/search?symbol=${t.symbol}&limit=1`,{
-          headers:{'x-api-key':TRACKER_API_KEY}
-        });
-        const jTrack=await rTrack.json();
-        const info=jTrack.data?.[0];
-        if(info){
-          t.marketCapUsd=info.marketCapUsd||t.marketCapUsd||0;
-          t.liquidityUsd=info.liquidityUsd||t.liquidityUsd||0;
-          t.holders=info.holders||t.holders||0;
-          t.socials=info.socials||t.socials||{};
-        }
-      }catch(e){ console.warn('Tracker fetch fail for',t.symbol); }
-    }
-
-    sortAndRender();
-  }catch(e){
-    console.error('fetchTokens error',e);
-    tokenGrid.innerHTML=`<p class="small">Error fetching tokens: ${e.message||e}</p>`;
-  }
+    walletGrid.innerHTML='';
+    tokenAccounts.value.forEach(acc=>{
+      const info = acc.account.data.parsed.info;
+      const amount = info.tokenAmount.uiAmount;
+      const mint = info.mint;
+      const card = document.createElement('div'); card.className='card';
+      card.innerHTML = `
+        <div class="token-header">
+          <img class="logo" src="" alt="${mint}"/>
+          <div>
+            <div>${mint}</div>
+            <div class="small">Quantità: ${amount}</div>
+            <div class="small">Contract: <a href="https://solscan.io/token/${mint}" target="_blank">${mint.slice(0,6)}...${mint.slice(-6)}</a>
+              <span class="copy-btn" data-mint="${mint}">📋</span>
+            </div>
+          </div>
+        </div>
+      `;
+      walletGrid.appendChild(card);
+    });
+    document.querySelectorAll('.copy-btn').forEach(btn=>{
+      btn.onclick=()=>{ copyToClipboard(btn.getAttribute('data-mint')); btn.textContent='✅'; setTimeout(()=>btn.textContent='📋',1000); };
+    });
+  }catch(e){ walletGrid.innerHTML=`<p class="small">Errore: ${e.message||e}</p>`; }
 }
 
-function sortAndRender(){
-  const sortBy=sortSelect.value;
-  const filterTime=timeToMs(timeSelect.value);
-  let sorted=allTokens.filter(t=>(t.createdAt||0)>=filterTime);
-  if(sortBy==='marketCap'){ sorted.sort((a,b)=>(b.marketCapUsd||0)-(a.marketCapUsd||0)); }
-  else if(sortBy==='created'){ sorted.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)); }
-  else if(sortBy==='holders'){ sorted.sort((a,b)=>(b.holders||0)-(a.holders||0)); }
-  renderTokens(sorted);
-}
+fetchWalletBtn.onclick=()=>{ const w=walletInput.value.trim(); if(w) fetchWalletTokens(w); };
 
-function renderTokens(tokens){
-  tokenGrid.innerHTML='';
-  if(!tokens.length){ tokenGrid.innerHTML=`<p class="small">No tokens found for selected time.</p>`; return; }
-  tokens.forEach(t=>{
+// -------- HOT POOLS SIMULATI --------
+// Per MVP useremo dati simulati (da API pubbliche servono backend per real-time)
+async function fetchHotPools(){
+  hotGrid.innerHTML='<p class="small">Caricamento hot pools...</p>';
+  // Simula 10 token con movimenti casuali
+  const now=Date.now();
+  const dummyTokens = Array.from({length:10},(_,i)=>({
+    name:'Token'+(i+1),
+    symbol:'T'+(i+1),
+    mint:'Mint'+i+Math.floor(Math.random()*9999),
+    liquidityUsd:Math.floor(Math.random()*50000)+500,
+    volumeUsd:Math.floor(Math.random()*100000),
+    createdAt:now-Math.floor(Math.random()*3600000*24),
+    socials:{twitter:'https://x.com',telegram:'https://t.me'}
+  }));
+
+  hotGrid.innerHTML='';
+  dummyTokens.forEach(t=>{
     const card=document.createElement('div'); card.className='card';
-    const mintShort=(t.mint||'').slice(0,6)+'...'+(t.mint||'').slice(-6);
+    const ageMs=Date.now()-t.createdAt;
+    const h=Math.floor(ageMs/3600000), m=Math.floor((ageMs%3600000)/60000), s=Math.floor((ageMs%60000)/1000);
     let socialHtml='';
-    if(t.socials){
-      for(const [k,v] of Object.entries(t.socials)){
-        socialHtml+=`<a href="${v}" target="_blank">${k}</a>`;
-      }
-    }
+    for(const [k,v] of Object.entries(t.socials)){ socialHtml+=`<a href="${v}" target="_blank">${k}</a> `; }
     card.innerHTML=`
       <div class="token-header">
-        <img class="logo" src="${t.image||''}" alt="${t.symbol||''}"/>
+        <img class="logo" src="" alt="${t.symbol}"/>
         <div>
-          <div class="title">${t.name||'N/A'} (${t.symbol||'N/A'})</div>
-          <div class="small">Contract: <a href="https://solscan.io/token/${t.mint}" target="_blank">${mintShort}</a> <span class="copy-btn" data-mint="${t.mint}">📋</span></div>
+          <div>${t.name} (${t.symbol})</div>
+          <div class="small">Liquidity: ${fmt(t.liquidityUsd)}, Volume: ${fmt(t.volumeUsd)}</div>
+          <div class="small">Age: ${h}h ${m}m ${s}s</div>
+          <div class="small">Contract: <a href="https://solscan.io/token/${t.mint}" target="_blank">${t.mint}</a>
+            <span class="copy-btn" data-mint="${t.mint}">📋</span>
+          </div>
+          <div class="small social-links">${socialHtml}</div>
         </div>
       </div>
-      <div class="metric">Market Cap: $${(t.marketCapUsd||0).toLocaleString()}</div>
-      <div class="metric">Liquidity: $${(t.liquidityUsd||0).toLocaleString()}</div>
-      <div class="metric small">Age: ${formatAge(t.ageMs)}</div>
-      ${socialHtml?`<div class="social-links">${socialHtml}</div>`:''}
-      <div class="metric"><a href="https://dexscreener.com/solana/${t.mint}" target="_blank">View Chart</a></div>
     `;
-    tokenGrid.appendChild(card);
+    hotGrid.appendChild(card);
   });
-
   document.querySelectorAll('.copy-btn').forEach(btn=>{
-    btn.onclick=()=>{
-      const m=btn.getAttribute('data-mint');
-      if(navigator.clipboard) navigator.clipboard.writeText(m);
-      btn.textContent='✅';
-      setTimeout(()=>btn.textContent='📋',1000);
-    };
+    btn.onclick=()=>{ copyToClipboard(btn.getAttribute('data-mint')); btn.textContent='✅'; setTimeout(()=>btn.textContent='📋',1000); };
   });
 }
 
-sortSelect.onchange=sortAndRender;
-timeSelect.onchange=sortAndRender;
-
-fetchTokens();
-setInterval(fetchTokens,5000);
+fetchHotPools();
+setInterval(fetchHotPools, REFRESH_MS);
 </script>
-
 </body>
 </html>
