@@ -1,41 +1,218 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Degen 10x Radar</title>
-  <link rel="stylesheet" href="style.css">
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Degen 10x Radar — Single file</title>
+<style>
+:root{--bg:#0f0f13;--accent:#55ff99;--muted:#9aa0a6;--warn:#ffb86b}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,Arial;background:linear-gradient(180deg,#070708 0%,var(--bg) 100%);color:#e6eef1}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid rgba(255,255,255,0.03)}
+.brand{font-weight:800}
+.brand .neon{color:var(--accent);text-shadow:0 0 12px rgba(85,255,153,0.12)}
+.controls .btn{margin-left:8px}
+.btn{background:#101014;color:#eaf7ee;border:1px solid rgba(255,255,255,0.03);padding:8px 12px;border-radius:8px;cursor:pointer;font-weight:700}
+.btn.small{padding:6px 8px;font-size:13px}
+.btn.active{box-shadow:0 6px 18px rgba(85,255,153,0.06);border-color:rgba(85,255,153,0.12)}
+.filters{padding:12px 18px;border-bottom:1px solid rgba(255,255,255,0.02)}
+.filter-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.filter-row label{font-size:13px;color:var(--muted)}
+.filter-row input, .filter-row select{background:#0b0b0d;color:#e6eef1;border:1px solid rgba(255,255,255,0.02);padding:6px 8px;border-radius:6px;min-width:80px}
+main{padding:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px}
+.card{background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01));padding:14px;border-radius:12px;border:1px solid rgba(255,255,255,0.02);transition:transform .16s}
+.card:hover{transform:translateY(-6px);box-shadow:0 12px 40px rgba(0,0,0,0.6)}
+.token-header{display:flex;align-items:center;justify-content:space-between}
+.token-left{display:flex;align-items:center;gap:10px}
+.logo{width:44px;height:44px;border-radius:10px;background:#07070a;object-fit:cover}
+.title{font-weight:700}
+.badge{font-size:12px;padding:4px 8px;border-radius:8px;background:rgba(255,255,255,0.02);color:var(--muted);margin-left:8px}
+.badge.new{background:linear-gradient(90deg,#ff66aa,#ff8855);color:#000;font-weight:800}
+.badge.trend{background:var(--warn);color:#000;font-weight:800}
+.badge.migrated{background:#1b2a1b;color:var(--accent);font-weight:800}
+.metrics{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+.metric{flex:1 1 45%;background:rgba(0,0,0,0.12);padding:8px;border-radius:8px;min-width:120px}
+.metric .label{font-size:12px;color:var(--muted)}
+.metric .value{font-weight:800;margin-top:6px}
+.small{font-size:12px;color:var(--muted)}
+.stream{padding:10px}
+.stream.hidden{display:none}
+.streamItem{padding:8px 10px;border-radius:8px;margin-bottom:8px;background:rgba(255,255,255,0.02);display:flex;justify-content:space-between;align-items:center}
+.copy-btn{cursor:pointer;color:var(--accent);margin-left:8px}
+.footer{padding:12px 18px;font-size:13px;color:var(--muted);border-top:1px solid rgba(255,255,255,0.02)}
+.hidden{display:none}
+</style>
 </head>
 <body>
-  <header>
-    <h1>🔥 Degen 10x Radar</h1>
-    <p>Live new Solana tokens</p>
-  </header>
 
-  <section class="controls">
-    <label>Sort:</label>
-    <select id="sortSelect">
-      <option value="score">10x Score</option>
-      <option value="new">Newest</option>
-      <option value="liquidity">Liquidity</option>
-      <option value="volume">Volume</option>
-      <option value="marketCap">Market Cap</option>
-    </select>
+<header class="topbar">
+  <div class="brand">Degen <span class="neon">10x</span> Radar</div>
+  <div class="controls">
+    <button id="viewRanked" class="btn active">Ranked 10x Feed</button>
+    <button id="viewStream" class="btn">Live Stream</button>
+    <button id="toggleCurrency" class="btn">USD</button>
+  </div>
+</header>
 
-    <label>Age Filter:</label>
-    <select id="ageFilter">
+<section class="filters">
+  <div class="filter-row">
+    <label>Min Liquidity</label><input id="minLiquidity" type="number" value="100" step="50"/>
+    <label>Max Dev %</label><input id="maxDev" type="number" value="20" step="1"/>
+    <label>Max MCap (USD)</label><input id="maxMcap" type="number" value="500000" step="1000"/>
+    <label>Age (hrs ≤)</label><input id="maxAge" type="number" value="6" step="1"/>
+    <button id="applyFilters" class="btn small">Apply</button>
+  </div>
+  <div class="filter-row" style="margin-top:8px">
+    <label>Min 10xScore</label><input id="minScore" type="number" value="0" step="10"/>
+    <label>Show</label>
+    <select id="lifecycleFilter">
       <option value="all">All</option>
-      <option value="new">New (≤1h)</option>
-      <option value="old">Old (>1h)</option>
+      <option value="new">New Creation</option>
+      <option value="tomigrate">To Migrate</option>
+      <option value="migrated">Migrated</option>
     </select>
+    <label>Token Age</label>
+    <select id="filterAgeGroup">
+      <option value="all">All</option>
+      <option value="new">New ≤1h</option>
+      <option value="old">Old &gt;1h</option>
+    </select>
+    <label>Sort by</label>
+    <select id="sortBy">
+      <option value="score">10xScore</option>
+      <option value="hot">Hot</option>
+      <option value="volume">Volume</option>
+      <option value="liquidity">Liquidity</option>
+    </select>
+    <button id="clearFilters" class="btn small">Clear</button>
+  </div>
+</section>
 
-    <button id="refreshBtn">🔄 Refresh</button>
-  </section>
+<main>
+  <section id="rankedView" class="grid"></section>
+  <section id="streamView" class="stream hidden"><div id="streamList"></div></section>
+</main>
 
-  <main id="tokenGrid">
-    <p>Loading tokens...</p>
-  </main>
+<footer class="footer">
+  <div>Auto-refresh every <strong id="refreshInterval">30s</strong> • Data: SolanaTracker</div>
+  <div class="small">Bundle Radar uses buyer-address fields when available. For advanced clustering we need a backend indexer.</div>
+</footer>
 
-  <script src="script.js"></script>
-</body>
-</html>
+<script>
+// SINGLE-FILE Degen 10x Radar — API key embedded
+const trackerApiKey = 'e6d255f4-d3ce-457f-b149-883b2f3e93e2'; // <-- your key
+const rankedViewEl = document.getElementById('rankedView');
+const streamViewEl = document.getElementById('streamView');
+const streamList = document.getElementById('streamList');
+let solPrice = 30;
+let allTokensRaw = [];
+let filteredTokens = [];
+let alerted = new Set();
+let showUSD = true;
+const refreshSec = 30;
+const HOT_ALERT_SCORE = 10000;
+
+// UI wiring
+document.getElementById('viewRanked').onclick = () => switchView('ranked');
+document.getElementById('viewStream').onclick = () => switchView('stream');
+document.getElementById('toggleCurrency').onclick = () => { showUSD = !showUSD; updateCurrencyButton(); renderRanked(); };
+document.getElementById('applyFilters').onclick = applyFilters;
+document.getElementById('clearFilters').onclick = () => {
+  document.getElementById('minLiquidity').value = 100;
+  document.getElementById('maxDev').value = 20;
+  document.getElementById('maxMcap').value = 500000;
+  document.getElementById('maxAge').value = 6;
+  document.getElementById('minScore').value = 0;
+  document.getElementById('lifecycleFilter').value = 'all';
+  document.getElementById('filterAgeGroup').value = 'all';
+  document.getElementById('sortBy').value = 'score';
+  applyFilters();
+};
+document.getElementById('sortBy').onchange = applyFilters;
+
+function updateCurrencyButton(){ document.getElementById('toggleCurrency').textContent = showUSD ? 'USD' : 'SOL'; }
+function fmt(v){ if(showUSD) return '$' + Number(v||0).toLocaleString(undefined,{maximumFractionDigits:2}); return (Number(v||0)/solPrice).toFixed(4)+' SOL'; }
+
+async function fetchSolPrice(){
+  try{
+    const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
+    const j = await r.json();
+    solPrice = j?.solana?.usd || solPrice;
+  }catch(e){ console.warn('sol price fetch failed', e); }
+}
+
+function compute(token){
+  const now = Date.now();
+  const created = typeof token.createdAt === 'number' ? token.createdAt : (token.createdAt ? Number(token.createdAt) : 0);
+  const ageH = created ? Math.max(0.0001,(now-created)/3600000) : 9999;
+  const pChange = token.priceChange1h || token.price_change_1h || 0;
+  const priceFactor = 1 + (pChange/100);
+  const hot = ((token.volume||0)*priceFactor)/ageH;
+  const liquidity = token.liquidityUsd || token.liquidity || 0;
+  const marketCap = token.marketCapUsd || token.market_cap_usd || 0;
+  const dev = token.dev || token.devPercent || token.top10 || 0;
+  const ageFactor = Math.max(1,12/Math.max(0.5,ageH));
+  const score = ((token.volume||1)*(liquidity||1))/((marketCap||1)*(dev+1))*ageFactor;
+  const lp = token.launchpad||null;
+  let lifecycle = 'unknown';
+  if(lp && typeof lp.curvePercentage==='number'){
+    if(lp.curvePercentage<100) lifecycle='new';
+    else lifecycle=token.migrated?'migrated':'tomigrate';
+  }else lifecycle=token.migrated?'migrated':'unknown';
+  let riskScore=0;
+  if((dev||0)>20||(liquidity||0)<100) riskScore=2;
+  else if((dev||0)>10||(liquidity||0)<500) riskScore=1;
+  return { hot, score, ageH, lifecycle, liquidity, marketCap, dev, riskScore };
+}
+
+async function fetchTokens(){
+  await fetchSolPrice();
+  try{
+    const r = await fetch('https://data.solanatracker.io/search?name=a&symbol=a', { headers:{'x-api-key':trackerApiKey}});
+    const j = await r.json();
+    allTokensRaw=j.data||[];
+    allTokensRaw.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+    applyFilters();
+    addToStream(allTokensRaw.slice(0,20));
+  }catch(e){ console.error('fetchTokens error', e); rankedViewEl.innerHTML=`<div class="small">Error fetching tokens: ${e.message||e}</div>`;}
+}
+
+function applyFilters(){
+  const minLiquidity=Number(document.getElementById('minLiquidity').value)||0;
+  const maxDev=Number(document.getElementById('maxDev').value)||9999;
+  const maxMcap=Number(document.getElementById('maxMcap').value)||Infinity;
+  const maxAge=Number(document.getElementById('maxAge').value)||9999;
+  const minScore=Number(document.getElementById('minScore').value)||0;
+  const ageGroup=document.getElementById('filterAgeGroup').value;
+  const lifecycleFilter=document.getElementById('lifecycleFilter').value;
+  const sortBy=document.getElementById('sortBy').value||'score';
+
+  filteredTokens=allTokensRaw.map(t=>({raw:t,m:compute(t)})).filter(obj=>{
+    const m=obj.m;
+    if(m.liquidity<minLiquidity) return false;
+    if(m.dev>maxDev) return false;
+    if(m.marketCap>maxMcap) return false;
+    if(m.ageH>maxAge) return false;
+    if(m.score<minScore) return false;
+    if(ageGroup==='new' && m.ageH>1) return false;
+    if(ageGroup==='old' && m.ageH<=1) return false;
+    if(lifecycleFilter!=='all' && obj.m.lifecycle!==lifecycleFilter) return false;
+    return true;
+  });
+
+  filteredTokens.sort((a,b)=>{
+    if(sortBy==='score') return b.m.score-a.m.score;
+    if(sortBy==='hot') return b.m.hot-a.m.hot;
+    if(sortBy==='volume') return (b.raw.volume||0)-(a.raw.volume||0);
+    if(sortBy==='liquidity') return (b.m.liquidity||0)-(a.m.liquidity||0);
+    return 0;
+  });
+
+  renderRanked();
+}
+
+function renderRanked(){
+  rankedViewEl.innerHTML='';
+  if(!filteredTokens.length){ rankedViewEl.innerHTML=`<div class="small">No tokens match filters.</div>`; return;}
+ 
