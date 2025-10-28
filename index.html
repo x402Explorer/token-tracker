@@ -51,6 +51,10 @@ h1 {
 .small { font-size:12px; color:#aaa;}
 .copy-btn {cursor:pointer; color:#55ff99; margin-left:6px;}
 .metric {margin-top:6px;}
+.chart {margin-top:6px;width:100%;height:40px;background:#07070a;display:flex;align-items:flex-end;gap:1px;border-radius:4px;overflow:hidden;}
+.chart-bar {background:#55ff99;width:100%;flex:1;transition:height 0.2s;}
+.social-links {margin-top:6px;}
+.social-links a {margin-right:8px;color:#55ff99;text-decoration:none;}
 </style>
 </head>
 <body>
@@ -74,22 +78,17 @@ h1 {
 const API_KEY = 'e6d255f4-d3ce-457f-b149-883b2f3e93e2';
 const tokenGrid = document.getElementById('tokenGrid');
 const sortSelect = document.getElementById('sortSelect');
-let solPrice = 30; 
 let allTokens = [];
 
-async function fetchSolPrice(){
-  try{
-    const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
-    const j = await r.json();
-    solPrice = j?.solana?.usd || solPrice;
-  }catch(e){ console.warn('Failed fetching SOL price', e);}
+function formatAge(ms){
+  let totalSec = Math.floor(ms/1000);
+  const h = Math.floor(totalSec/3600); totalSec%=3600;
+  const m = Math.floor(totalSec/60); totalSec%=60;
+  const s = totalSec;
+  return `${h}h ${m}m ${s}s`;
 }
 
-function fmtUSD(value){ return '$'+Number(value||0).toLocaleString(undefined,{maximumFractionDigits:4}); }
-function fmtSOL(value){ return ((value||0)/solPrice).toFixed(4)+' SOL'; }
-
 async function fetchTokens(){
-  await fetchSolPrice();
   try{
     const r = await fetch('https://data.solanatracker.io/search?market=pumpfun&limit=50', {
       headers: { 'x-api-key': API_KEY }
@@ -97,7 +96,9 @@ async function fetchTokens(){
     const j = await r.json();
     const tokens = j.data || [];
     const now = Date.now();
-    allTokens = tokens.filter(t => t.createdAt && (now - t.createdAt)<3600000); // new tokens <1h
+    // only new tokens <1h
+    allTokens = tokens.filter(t => t.createdAt && (now - t.createdAt)<3600000);
+    allTokens.forEach(t=>t.ageMs = now - t.createdAt);
     sortAndRender();
   }catch(e){
     console.error('fetchTokens error', e);
@@ -108,25 +109,31 @@ async function fetchTokens(){
 function sortAndRender(){
   const sortBy = sortSelect.value;
   let sorted = [...allTokens];
-  if(sortBy==='marketCap'){
-    sorted.sort((a,b)=>(b.marketCapUsd||0)-(a.marketCapUsd||0));
-  }else if(sortBy==='created'){
-    sorted.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
-  }else if(sortBy==='holders'){
-    sorted.sort((a,b)=>(b.holders||0)-(a.holders||0));
-  }
+  if(sortBy==='marketCap'){ sorted.sort((a,b)=>(b.marketCapUsd||0)-(a.marketCapUsd||0)); }
+  else if(sortBy==='created'){ sorted.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)); }
+  else if(sortBy==='holders'){ sorted.sort((a,b)=>(b.holders||0)-(a.holders||0)); }
   renderTokens(sorted);
 }
 
 function renderTokens(tokens){
   tokenGrid.innerHTML = '';
-  if(!tokens.length){
-    tokenGrid.innerHTML = `<p class="small">No new tokens found in the last hour.</p>`;
-    return;
-  }
+  if(!tokens.length){ tokenGrid.innerHTML = `<p class="small">No new tokens in the last hour.</p>`; return; }
   tokens.forEach(t=>{
     const card = document.createElement('div'); card.className='card';
     const mintShort = (t.mint||'').slice(0,6)+'...'+(t.mint||'').slice(-6);
+    // mini chart
+    let chartHtml = '<div class="chart">';
+    const volPoints = t.volumeHistory || [t.volume||0, t.volume||0, t.volume||0, t.volume||0];
+    const maxV = Math.max(...volPoints,1);
+    chartHtml += volPoints.map(v=>`<div class="chart-bar" style="height:${(v/maxV*100).toFixed(1)}%"></div>`).join('');
+    chartHtml+='</div>';
+
+    // social links
+    let socialHtml = '';
+    if(t.socials){
+      for(const [k,v] of Object.entries(t.socials)){ socialHtml+=`<a href="${v}" target="_blank">${k}</a>`; }
+    }
+
     card.innerHTML=`
       <div class="token-header">
         <img class="logo" src="${t.image||''}" alt="${t.symbol||''}"/>
@@ -137,9 +144,11 @@ function renderTokens(tokens){
           </div>
         </div>
       </div>
-      <div class="metric">Market Cap: ${fmtUSD(t.marketCapUsd)}</div>
-      <div class="metric">Price: ${fmtUSD(t.priceUsd)} / ${fmtSOL(t.priceUsd)}</div>
-      <div class="metric small">Holders: ${t.holders||0}</div>
+      <div class="metric">Market Cap: $${(t.marketCapUsd||0).toLocaleString()}</div>
+      <div class="metric">Liquidity: $${(t.liquidityUsd||0).toLocaleString()}</div>
+      <div class="metric small">Age: ${formatAge(t.ageMs)}</div>
+      ${chartHtml}
+      ${socialHtml ? `<div class="social-links">${socialHtml}</div>` : ''}
     `;
     tokenGrid.appendChild(card);
   });
@@ -157,7 +166,7 @@ function renderTokens(tokens){
 sortSelect.onchange = sortAndRender;
 
 fetchTokens();
-setInterval(fetchTokens, 5000);
+setInterval(fetchTokens,5000);
 </script>
 
 </body>
