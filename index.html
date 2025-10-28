@@ -3,28 +3,33 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Degen Radar</title>
+<title>Degen Radar Pro</title>
 <style>
-  body { background:#121212; color:#fff; font-family:Arial,sans-serif; padding:1rem; }
-  h1 { text-align:center; color:#55ff99; }
+  body { background:#121212; color:#fff; font-family:Arial,sans-serif; margin:0; padding:1rem; }
+  h1 { text-align:center; color:#55ff99; margin-bottom:10px; }
   .controls { text-align:center; margin-bottom:15px; }
-  button { margin:0 5px; padding:5px 10px; border:none; border-radius:5px; cursor:pointer; background:#333; color:#fff; }
-  button:hover { background:#555; }
-  table { width:100%; border-collapse: collapse; margin-top:10px; }
-  th, td { padding:8px; text-align:left; }
-  th { background:#1e1e1e; }
-  tr.green { background:#1b2a1b; }
-  tr.yellow { background:#3a3a1a; }
-  tr.red { background:#3a1a1a; }
-  td img { border-radius:50%; vertical-align:middle; }
+  button { margin:0 5px; padding:6px 12px; border:none; border-radius:5px; cursor:pointer; background:#333; color:#fff; font-weight:bold; }
+  button:hover { background:#55ff99; color:#000; }
+  .grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:12px; }
+  .card { background:#1e1e1e; border-radius:10px; padding:10px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); transition: transform 0.2s; }
+  .card:hover { transform: translateY(-5px); box-shadow: 0 8px 20px rgba(0,0,0,0.7); }
+  .token-logo { width:48px; height:48px; border-radius:50%; vertical-align:middle; margin-right:8px; }
+  .token-header { display:flex; align-items:center; margin-bottom:8px; justify-content: space-between; }
+  .badge { display:inline-block; padding:2px 6px; border-radius:4px; font-size:0.7em; margin-left:5px; }
+  .green { background:#1b2a1b; }
+  .yellow { background:#3a3a1a; }
+  .red { background:#3a1a1a; }
+  .new-badge { background:#ff55aa; color:#fff; font-weight:bold; }
+  .trend-badge { background:#ffaa00; color:#000; font-weight:bold; }
+  .metric { font-size:0.85em; margin:2px 0; }
   a { color:#55ff99; text-decoration:none; }
   a:hover { text-decoration:underline; }
+  canvas { width:100%; height:40px; margin-top:4px; }
 </style>
 </head>
 <body>
 
-<h1>Degen Radar</h1>
-
+<h1>Degen Radar Pro</h1>
 <div class="controls">
   <button onclick="sortBy('hot')">Sort by Hot</button>
   <button onclick="sortBy('volume')">Sort by Volume</button>
@@ -32,75 +37,81 @@
   <button onclick="toggleCurrency()">Toggle SOL / $</button>
 </div>
 
-<table id="tokenTable">
-  <thead>
-    <tr>
-      <th>Logo</th>
-      <th>Name (Symbol)</th>
-      <th>Hot</th>
-      <th>Volume</th>
-      <th>Age</th>
-      <th>Dev %</th>
-      <th>Liquidity</th>
-      <th>Risk</th>
-      <th>Social</th>
-      <th>Price</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr><td colspan="10">Loading tokens...</td></tr>
-  </tbody>
-</table>
+<div class="grid" id="tokenGrid">
+  Loading tokens...
+</div>
 
 <script>
 const trackerApiKey = 'e6d255f4-d3ce-457f-b149-883b2f3e93e2';
 let allTokens = [];
 let currentSort = 'hot';
 let showInUSD = true;
+let solPrice = 30; // fallback
 
-// Fetch tokens from API
+// Fetch SOL price
+async function fetchSOLPrice() {
+  try {
+    const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
+    const data = await res.json();
+    solPrice = data.solana.usd;
+  } catch(e) { console.error('SOL price fetch error', e); }
+}
+
+// Fetch tokens
 async function fetchTokens() {
+  await fetchSOLPrice();
   try {
     const res = await fetch('https://data.solanatracker.io/search?name=a&symbol=a', {
       headers: { 'x-api-key': trackerApiKey }
     });
     const json = await res.json();
     allTokens = json.data || [];
-    updateTable();
+    updateGrid();
   } catch(e) {
     console.error(e);
-    document.querySelector('#tokenTable tbody').innerHTML = '<tr><td colspan="10">Error fetching tokens</td></tr>';
+    document.getElementById('tokenGrid').innerHTML = 'Error fetching tokens';
   }
 }
 
-// Compute Hot metric and risk
+// Compute Hot and risk
 function computeMetrics(token) {
   const now = Date.now();
   const ageHours = token.createdAt ? (now - token.createdAt)/3600000 : 1;
-
-  // Price change factor, fallback to 0 if not provided
   const priceChange = token.priceChange1h || 0;
-  const priceFactor = 1 + (priceChange / 100);
+  const priceFactor = 1 + (priceChange/100);
+  const hot = ((token.volume||0) * priceFactor)/ageHours;
 
-  // Hot = volume * priceFactor / age
-  const hot = ((token.volume || 0) * priceFactor) / ageHours;
-
-  // Risk scoring
   let riskScore = 0;
-  if((token.dev || 0) > 20 || (token.liquidityUsd || 0) < 100) riskScore = 2;
-  else if((token.dev || 0) > 10 || (token.liquidityUsd || 0) < 500) riskScore = 1;
+  if((token.dev||0)>20 || (token.liquidityUsd||0)<100) riskScore=2;
+  else if((token.dev||0)>10 || (token.liquidityUsd||0)<500) riskScore=1;
 
-  return { hot, riskScore, ageHours };
+  return {hot, riskScore, ageHours};
 }
 
-// Format value as USD or SOL
+// Format value in USD/SOL
 function formatValue(value){
-  if(showInUSD) return '$' + (value||0).toFixed(2);
-  return (value/1).toFixed(4) + ' SOL'; // adjust if you want actual conversion
+  if(showInUSD) return '$'+(value||0).toFixed(2);
+  return ((value||0)/solPrice).toFixed(4)+' SOL';
 }
 
-// Update table
-function updateTable(){
+// Simple sparkline for volume trend
+function generateSparkline(canvas, data){
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.beginPath();
+  const step = canvas.width / (data.length-1 || 1);
+  data.forEach((v,i)=>{
+    const y = canvas.height - (v/Math.max(...data))*canvas.height;
+    if(i===0) ctx.moveTo(0,y);
+    else ctx.lineTo(i*step,y);
+  });
+  ctx.strokeStyle='#55ff99';
+  ctx.lineWidth=2;
+  ctx.stroke();
+}
+
+// Update grid
+function updateGrid() {
   allTokens.forEach(t=>{
     const m = computeMetrics(t);
     t.hot = m.hot;
@@ -112,38 +123,50 @@ function updateTable(){
   if(currentSort==='volume') allTokens.sort((a,b)=>(b.volume||0)-(a.volume||0));
   if(currentSort==='risk') allTokens.sort((a,b)=>a.riskScore-b.riskScore);
 
-  const tbody = document.querySelector('#tokenTable tbody');
-  tbody.innerHTML = '';
-  if(allTokens.length===0){
-    tbody.innerHTML='<tr><td colspan="10">No tokens found</td></tr>';
-    return;
-  }
+  const grid = document.getElementById('tokenGrid');
+  grid.innerHTML='';
+  if(allTokens.length===0){ grid.innerHTML='No tokens found'; return; }
 
   allTokens.slice(0,50).forEach(t=>{
     const riskClass = t.riskScore===0?'green':t.riskScore===1?'yellow':'red';
-    const row = document.createElement('tr');
-    row.className = riskClass;
-    row.innerHTML=`
-      <td><img src="${t.image||''}" width="32" height="32" alt="${t.symbol}"></td>
-      <td>${t.name||'N/A'} (${t.symbol||'N/A'})</td>
-      <td>${t.hot.toFixed(2)}</td>
-      <td>${formatValue(t.volume)}</td>
-      <td>${t.ageHours.toFixed(1)}h</td>
-      <td>${t.dev||0}%</td>
-      <td>${formatValue(t.liquidityUsd)}</td>
-      <td>${riskClass}</td>
-      <td><a href="${t.socials?.twitter||'#'}" target="_blank">${t.socials?.twitter?'Link':'N/A'}</a></td>
-      <td>${formatValue(t.priceUsd)}</td>
+    const card = document.createElement('div');
+    card.className='card '+riskClass;
+
+    const isNew = t.ageHours < 1; // less than 1h
+    const isTrending = (t.volume_5m || 0) > (t.volume_15m || 0)*1.2; // 20% spike
+
+    card.innerHTML=`
+      <div class="token-header">
+        <div>
+          <img class="token-logo" src="${t.image||''}" alt="${t.symbol}">
+          <strong>${t.name||'N/A'} (${t.symbol||'N/A'})</strong>
+          ${isNew?'<span class="badge new-badge">NEW</span>':''}
+          ${isTrending?'<span class="badge trend-badge">TREND</span>':''}
+        </div>
+        <span class="badge ${riskClass}">${riskClass==='green'?'Safe':riskClass==='yellow'?'Caution':'Risk'}</span>
+      </div>
+      <div class="metric">Hot: ${t.hot.toFixed(2)}</div>
+      <div class="metric">Volume: ${formatValue(t.volume)}</div>
+      <div class="metric">Price: ${formatValue(t.priceUsd)}</div>
+      <div class="metric">Liquidity: ${formatValue(t.liquidityUsd)}</div>
+      <div class="metric">Age: ${t.ageHours.toFixed(2)}h</div>
+      <div class="metric">Dev: ${t.dev||0}%</div>
+      <div class="metric">Social: <a href="${t.socials?.twitter||'#'}" target="_blank">${t.socials?.twitter?'Link':'N/A'}</a></div>
+      <canvas id="spark_${t.mint}"></canvas>
     `;
-    tbody.appendChild(row);
+    grid.appendChild(card);
+
+    // Generate mini sparkline
+    const canvas = document.getElementById(`spark_${t.mint}`);
+    if(canvas && t.volume_5m) generateSparkline(canvas,[t.volume_5m, t.volume_15m, t.volume_30m || t.volume_15m]);
   });
 }
 
-// Sorting and toggle functions
-function sortBy(field){ currentSort=field; updateTable(); }
-function toggleCurrency(){ showInUSD = !showInUSD; updateTable(); }
+// Sorting and toggle
+function sortBy(field){ currentSort=field; updateGrid(); }
+function toggleCurrency(){ showInUSD = !showInUSD; updateGrid(); }
 
-// Initial fetch and auto-refresh every 30s
+// Initial fetch + auto-refresh
 fetchTokens();
 setInterval(fetchTokens,30000);
 </script>
