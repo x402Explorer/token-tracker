@@ -7,14 +7,15 @@
 <style>
   body { background:#121212; color:#fff; font-family:Arial,sans-serif; margin:0; padding:1rem; }
   h1 { text-align:center; color:#55ff99; margin-bottom:10px; }
-  .controls { text-align:center; margin-bottom:15px; }
+  .controls, .filters { text-align:center; margin-bottom:15px; }
   button { margin:0 5px; padding:6px 12px; border:none; border-radius:5px; cursor:pointer; background:#333; color:#fff; font-weight:bold; }
   button:hover { background:#55ff99; color:#000; }
+  input, select { margin:0 5px; }
   .grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:12px; }
   .card { background:#1e1e1e; border-radius:10px; padding:10px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); transition: transform 0.2s; }
   .card:hover { transform: translateY(-5px); box-shadow: 0 8px 20px rgba(0,0,0,0.7); }
   .token-logo { width:48px; height:48px; border-radius:50%; vertical-align:middle; margin-right:8px; }
-  .token-header { display:flex; align-items:center; margin-bottom:8px; justify-content: space-between; }
+  .token-header { display:flex; align-items:center; margin-bottom:8px; justify-content: space-between; flex-wrap: wrap; }
   .badge { display:inline-block; padding:2px 6px; border-radius:4px; font-size:0.7em; margin-left:5px; }
   .green { background:#1b2a1b; }
   .yellow { background:#3a3a1a; }
@@ -30,11 +31,26 @@
 <body>
 
 <h1>Degen Radar Pro</h1>
+
 <div class="controls">
   <button onclick="sortBy('hot')">Sort by Hot</button>
   <button onclick="sortBy('volume')">Sort by Volume</button>
   <button onclick="sortBy('risk')">Sort by Risk</button>
   <button onclick="toggleCurrency()">Toggle SOL / $</button>
+</div>
+
+<div class="filters">
+  Hot > <input type="number" id="filterHot" value="0" step="10">
+  Liquidity > <input type="number" id="filterLiquidity" value="0" step="100">
+  Dev % < <input type="number" id="filterDev" value="100" step="1">
+  Age < <input type="number" id="filterAge" value="24" step="1">h
+  Token Age: 
+  <select id="filterAgeGroup">
+    <option value="all">All</option>
+    <option value="new">New (≤1h)</option>
+    <option value="old">Old (>1h)</option>
+  </select>
+  <button onclick="applyFilters()">Apply Filters</button>
 </div>
 
 <div class="grid" id="tokenGrid">
@@ -46,7 +62,9 @@ const trackerApiKey = 'e6d255f4-d3ce-457f-b149-883b2f3e93e2';
 let allTokens = [];
 let currentSort = 'hot';
 let showInUSD = true;
-let solPrice = 30; // fallback
+let solPrice = 30;
+let alertedTokens = new Set();
+const HOT_THRESHOLD = 5000;
 
 // Fetch SOL price
 async function fetchSOLPrice() {
@@ -66,14 +84,14 @@ async function fetchTokens() {
     });
     const json = await res.json();
     allTokens = json.data || [];
-    updateGrid();
+    applyFilters();
   } catch(e) {
     console.error(e);
     document.getElementById('tokenGrid').innerHTML = 'Error fetching tokens';
   }
 }
 
-// Compute Hot and risk
+// Compute Hot and Risk
 function computeMetrics(token) {
   const now = Date.now();
   const ageHours = token.createdAt ? (now - token.createdAt)/3600000 : 1;
@@ -88,13 +106,21 @@ function computeMetrics(token) {
   return {hot, riskScore, ageHours};
 }
 
-// Format value in USD/SOL
+// Format value
 function formatValue(value){
   if(showInUSD) return '$'+(value||0).toFixed(2);
   return ((value||0)/solPrice).toFixed(4)+' SOL';
 }
 
-// Simple sparkline for volume trend
+// Lifecycle badges
+function getLifecycleBadge(token){
+  if(token.launchpad && token.launchpad.curvePercentage < 100) return '<span class="badge new-badge">NEW CREATION</span>';
+  if(token.launchpad && token.launchpad.curvePercentage === 100 && !token.migrated) return '<span class="badge yellow">TO MIGRATE</span>';
+  if(token.migrated || (token.launchpad && token.launchpad.curvePercentage === 100 && token.migrated)) return '<span class="badge green">MIGRATED</span>';
+  return '';
+}
+
+// Generate sparkline
 function generateSparkline(canvas, data){
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -110,7 +136,7 @@ function generateSparkline(canvas, data){
   ctx.stroke();
 }
 
-// Update grid
+// Update Grid
 function updateGrid() {
   allTokens.forEach(t=>{
     const m = computeMetrics(t);
@@ -129,47 +155,25 @@ function updateGrid() {
 
   allTokens.slice(0,50).forEach(t=>{
     const riskClass = t.riskScore===0?'green':t.riskScore===1?'yellow':'red';
+    const isTrending = (t.volume_5m || 0) > (t.volume_15m || 0)*1.2;
+
     const card = document.createElement('div');
     card.className='card '+riskClass;
-
-    const isNew = t.ageHours < 1; // less than 1h
-    const isTrending = (t.volume_5m || 0) > (t.volume_15m || 0)*1.2; // 20% spike
+    card.id = `card_${t.mint}`;
 
     card.innerHTML=`
       <div class="token-header">
         <div>
           <img class="token-logo" src="${t.image||''}" alt="${t.symbol}">
           <strong>${t.name||'N/A'} (${t.symbol||'N/A'})</strong>
-          ${isNew?'<span class="badge new-badge">NEW</span>':''}
+          ${getLifecycleBadge(t)}
           ${isTrending?'<span class="badge trend-badge">TREND</span>':''}
         </div>
         <span class="badge ${riskClass}">${riskClass==='green'?'Safe':riskClass==='yellow'?'Caution':'Risk'}</span>
       </div>
       <div class="metric">Hot: ${t.hot.toFixed(2)}</div>
       <div class="metric">Volume: ${formatValue(t.volume)}</div>
-      <div class="metric">Price: ${formatValue(t.priceUsd)}</div>
+      <div class="metric">Market Cap: ${formatValue(t.marketCapUsd)}</div>
       <div class="metric">Liquidity: ${formatValue(t.liquidityUsd)}</div>
       <div class="metric">Age: ${t.ageHours.toFixed(2)}h</div>
-      <div class="metric">Dev: ${t.dev||0}%</div>
-      <div class="metric">Social: <a href="${t.socials?.twitter||'#'}" target="_blank">${t.socials?.twitter?'Link':'N/A'}</a></div>
-      <canvas id="spark_${t.mint}"></canvas>
-    `;
-    grid.appendChild(card);
-
-    // Generate mini sparkline
-    const canvas = document.getElementById(`spark_${t.mint}`);
-    if(canvas && t.volume_5m) generateSparkline(canvas,[t.volume_5m, t.volume_15m, t.volume_30m || t.volume_15m]);
-  });
-}
-
-// Sorting and toggle
-function sortBy(field){ currentSort=field; updateGrid(); }
-function toggleCurrency(){ showInUSD = !showInUSD; updateGrid(); }
-
-// Initial fetch + auto-refresh
-fetchTokens();
-setInterval(fetchTokens,30000);
-</script>
-
-</body>
-</html>
+      <div class
