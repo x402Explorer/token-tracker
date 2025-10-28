@@ -1,61 +1,126 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Trending Tokens</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Degen Radar</title>
+<style>
+  body { background:#121212; color:#fff; font-family:Arial,sans-serif; padding:1rem; }
+  h1 { text-align:center; color:#55ff99; }
+  .controls { text-align:center; margin-bottom:15px; }
+  button { margin:0 5px; padding:5px 10px; border:none; border-radius:5px; cursor:pointer; background:#333; color:#fff; }
+  button:hover { background:#555; }
+  table { width:100%; border-collapse: collapse; margin-top:10px; }
+  th, td { padding:8px; text-align:left; }
+  th { background:#1e1e1e; }
+  tr.green { background:#1b2a1b; }
+  tr.yellow { background:#3a3a1a; }
+  tr.red { background:#3a1a1a; }
+  a { color:#55ff99; text-decoration:none; }
+  a:hover { text-decoration:underline; }
+</style>
 </head>
-<body style="background:#121212; color:#fff; font-family:sans-serif; padding:1rem;">
+<body>
 
-<h1 style="color:#55ff99;">Trending Tokens Tracker</h1>
-<pre id="log">Loading tokens...</pre>
+<h1>Degen Radar</h1>
+
+<div class="controls">
+  <button onclick="sortBy('buzz')">Sort by Buzz</button>
+  <button onclick="sortBy('volume')">Sort by Volume</button>
+  <button onclick="sortBy('risk')">Sort by Risk</button>
+</div>
+
+<table id="tokenTable">
+  <thead>
+    <tr>
+      <th>Name (Symbol)</th>
+      <th>Buzz</th>
+      <th>Volume</th>
+      <th>Age</th>
+      <th>Dev %</th>
+      <th>Liquidity</th>
+      <th>Risk</th>
+      <th>Social</th>
+      <th>Price</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td colspan="9">Loading tokens...</td></tr>
+  </tbody>
+</table>
 
 <script>
-const log = document.getElementById('log');
 const trackerApiKey = 'e6d255f4-d3ce-457f-b149-883b2f3e93e2';
+let allTokens = [];
+let currentSort = 'buzz';
 
 async function fetchTokens() {
   try {
-    // Query a common letter to guarantee some tokens
-    const response = await fetch('https://data.solanatracker.io/search?name=a&symbol=a', {
+    const res = await fetch('https://data.solanatracker.io/search?name=a&symbol=a', {
       headers: { 'x-api-key': trackerApiKey }
     });
-    const json = await response.json();
-    const tokens = json.data || [];
-
-    if(tokens.length === 0) {
-      log.textContent = 'No tokens found.';
-      return;
-    }
-
-    const now = Date.now();
-    const output = tokens.slice(0, 20).map(t => {
-      const ageHours = t.createdAt ? (now - t.createdAt) / 3600000 : 1;
-      const buzz = (t.volume || 0) / ageHours;
-      return `
-Name: ${t.name || 'N/A'} (${t.symbol || 'N/A'})
-Volume: ${t.volume || 0}
-Buzz: ${buzz.toFixed(2)}
-Created: ${new Date(t.createdAt).toLocaleString()}
-Creator: ${t.tokenDetails?.creator || 'N/A'}
-Social: ${t.socials?.twitter || 'N/A'}
-Price: $${t.priceUsd || 'N/A'}
-------------------------------
-      `;
-    });
-
-    log.textContent = output.join('\n');
+    const json = await res.json();
+    allTokens = json.data || [];
+    updateTable();
   } catch(e) {
     console.error(e);
-    log.textContent = 'Error fetching tokens.';
+    document.querySelector('#tokenTable tbody').innerHTML = '<tr><td colspan="9">Error fetching tokens</td></tr>';
   }
 }
 
-// Initial fetch
-fetchTokens();
+function computeMetrics(token) {
+  const now = Date.now();
+  const ageHours = token.createdAt ? (now - token.createdAt)/3600000 : 1;
+  const buzz = (token.volume || 0)/ageHours;
+  let riskScore = 0; // 0=green,1=yellow,2=red
+  if((token.dev || 0) > 20 || (token.liquidityUsd || 0) < 100) riskScore = 2;
+  else if((token.dev || 0) > 10 || (token.liquidityUsd || 0) < 500) riskScore = 1;
+  return {buzz, riskScore, ageHours};
+}
 
-// Auto-refresh every 30 seconds
-setInterval(fetchTokens, 30000);
+function updateTable() {
+  allTokens.forEach(t => {
+    const m = computeMetrics(t);
+    t.buzz = m.buzz;
+    t.riskScore = m.riskScore;
+    t.ageHours = m.ageHours;
+  });
+
+  if(currentSort==='buzz') allTokens.sort((a,b)=>b.buzz-a.buzz);
+  if(currentSort==='volume') allTokens.sort((a,b)=>(b.volume||0)-(a.volume||0));
+  if(currentSort==='risk') allTokens.sort((a,b)=>a.riskScore-b.riskScore);
+
+  const tbody = document.querySelector('#tokenTable tbody');
+  tbody.innerHTML = '';
+  if(allTokens.length===0) {
+    tbody.innerHTML='<tr><td colspan="9">No tokens found</td></tr>';
+    return;
+  }
+
+  allTokens.slice(0,50).forEach(t=>{
+    const riskClass = t.riskScore===0?'green':t.riskScore===1?'yellow':'red';
+    const row = document.createElement('tr');
+    row.className = riskClass;
+    row.innerHTML=`
+      <td>${t.name||'N/A'} (${t.symbol||'N/A'})</td>
+      <td>${t.buzz.toFixed(2)}</td>
+      <td>${t.volume||0}</td>
+      <td>${t.ageHours.toFixed(1)}h</td>
+      <td>${t.dev||0}%</td>
+      <td>${t.liquidityUsd||0}</td>
+      <td>${riskClass}</td>
+      <td><a href="${t.socials?.twitter||'#'}" target="_blank">${t.socials?.twitter?'Link':'N/A'}</a></td>
+      <td>$${t.priceUsd||'N/A'}</td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function sortBy(field){ currentSort=field; updateTable(); }
+
+// Initial fetch + auto-refresh every 30s
+fetchTokens();
+setInterval(fetchTokens,30000);
 </script>
 
 </body>
