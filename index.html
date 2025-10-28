@@ -1,138 +1,130 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>New Token Explorer — Pump.fun</title>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Pump.Fun New Tokens Explorer</title>
 <style>
-:root{--bg:#0f0f13;--accent:#55ff99;--muted:#9aa0a6;--warn:#ffb86b}
-body{margin:0;font-family:Arial, sans-serif;background:var(--bg);color:#fff;padding:10px}
-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-header h1{color:var(--accent)}
-.controls button{margin-left:5px;padding:6px 10px;border-radius:6px;border:none;background:#101014;color:#fff;cursor:pointer}
-.controls button.active{box-shadow:0 4px 12px rgba(85,255,153,0.3)}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
-.card{background:#121212;border-radius:10px;padding:10px;border:1px solid rgba(255,255,255,0.05);transition:transform .15s}
-.card:hover{transform:translateY(-4px);box-shadow:0 8px 20px rgba(0,0,0,0.5)}
-.token-header{display:flex;align-items:center;gap:10px;margin-bottom:6px}
-.token-header img{width:40px;height:40px;border-radius:8px;object-fit:cover;background:#07070a}
-.token-title{font-weight:700;font-size:14px}
-.badge{font-size:11px;padding:2px 6px;border-radius:6px;background:rgba(255,255,255,0.03);color:var(--muted);margin-left:5px}
-.metrics{display:flex;flex-wrap:wrap;gap:6px;font-size:12px;margin-top:6px}
-.metric{flex:1 1 45%;background:rgba(255,255,255,0.02);padding:4px 6px;border-radius:6px}
-.metric .label{color:var(--muted);font-size:11px}
-.metric .value{font-weight:700;font-size:13px}
-.chart{height:40px;display:flex;gap:2px;margin-top:6px;align-items:end}
-.chart div{flex:1;background:var(--accent);border-radius:2px;transition:height .3s}
-.socials a{color:var(--accent);margin-right:6px;font-size:12px;text-decoration:none}
+body {margin:0;font-family:Arial;background:#0f0f13;color:#fff;padding:12px;}
+h1{text-align:center;margin-bottom:16px;color:#55ff99;}
+.controls{display:flex;justify-content:center;gap:12px;margin-bottom:12px;}
+.select-sort{background:#1b1b1f;color:#fff;border:1px solid rgba(255,255,255,0.03);border-radius:6px;padding:6px 10px;}
+.token-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;}
+.card{background:#1b1b1f;border-radius:12px;padding:12px;border:1px solid rgba(255,255,255,0.03);transition:transform 0.15s;}
+.card:hover{transform:translateY(-4px);box-shadow:0 10px 30px rgba(0,0,0,0.5);}
+.token-header{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+.logo{width:48px;height:48px;border-radius:10px;object-fit:cover;background:#07070a;}
+.title{font-weight:700;font-size:1.1em;}
+.small{font-size:12px;color:#aaa;}
+.copy-btn{cursor:pointer;color:#55ff99;margin-left:6px;}
+.metric{margin-top:6px;}
+.social-links{margin-top:6px;}
+.social-links a{margin-right:8px;color:#55ff99;text-decoration:none;}
 </style>
 </head>
 <body>
 
-<header>
-  <h1>Pump.fun New Tokens</h1>
-  <div class="controls">
-    <button id="sortMcap" class="active">Sort by MCAP</button>
-    <button id="sortAge">Sort by Age</button>
-    <button id="sortHolders">Sort by Holders</button>
-  </div>
-</header>
+<h1>Pump.Fun New Tokens</h1>
+<div class="controls">
+  <label>Sort by:
+    <select id="sortSelect" class="select-sort">
+      <option value="created">Newest</option>
+      <option value="marketCap">Market Cap</option>
+      <option value="holders">Holders</option>
+    </select>
+  </label>
+</div>
 
-<main class="grid" id="tokenGrid">
+<div id="tokenGrid" class="token-grid">
   <p>Loading tokens...</p>
-</main>
+</div>
 
 <script>
-const API_KEY = 'YOUR_API_KEY_HERE';
-const REFRESH_MS = 5000;
+const API_KEY = 'e6d255f4-d3ce-457f-b149-883b2f3e93e2';
 const tokenGrid = document.getElementById('tokenGrid');
-let tokensRaw = [];
-let volumeHistoryMap = {};
+const sortSelect = document.getElementById('sortSelect');
+let allTokens = [];
 
-async function fetchTokens() {
-  try {
-    const res = await fetch('https://data.solanatracker.io/search?name=&symbol=', {
-      headers: { 'x-api-key': API_KEY }
-    });
-    const json = await res.json();
-    tokensRaw = json.data.filter(t => t.launchpad && t.launchpad.curvePercentage < 100); // only new creation
-    updateVolumeHistory();
-    renderTokens();
-  } catch (e) {
-    tokenGrid.innerHTML = `<p>Error fetching tokens: ${e}</p>`;
-  }
-}
-
-function updateVolumeHistory() {
-  tokensRaw.forEach(t => {
-    const vol = t.volume || 0;
-    if(!volumeHistoryMap[t.mint]) volumeHistoryMap[t.mint] = [];
-    volumeHistoryMap[t.mint].push(vol);
-    if(volumeHistoryMap[t.mint].length > 5) volumeHistoryMap[t.mint].shift();
-    t.volumeHistory = volumeHistoryMap[t.mint];
-  });
-}
-
-function fmtUSD(value) { return '$' + Number(value||0).toLocaleString(undefined,{maximumFractionDigits:2}); }
-function fmtAge(ts) {
-  const ageMs = Date.now() - ts;
-  const h = Math.floor(ageMs/3600000);
-  const m = Math.floor((ageMs%3600000)/60000);
-  const s = Math.floor((ageMs%60000)/1000);
+function formatAge(ms){
+  let totalSec = Math.floor(ms/1000);
+  const h = Math.floor(totalSec/3600); totalSec%=3600;
+  const m = Math.floor(totalSec/60); totalSec%=60;
+  const s = totalSec;
   return `${h}h ${m}m ${s}s`;
 }
 
-function renderTokens(sort='mcap') {
-  if(!tokensRaw.length){ tokenGrid.innerHTML='<p>No new tokens found.</p>'; return; }
-  let tokens = [...tokensRaw];
-  if(sort==='mcap') tokens.sort((a,b)=>b.marketCapUsd - a.marketCapUsd);
-  if(sort==='age') tokens.sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
-  if(sort==='holders') tokens.sort((a,b)=>(b.holders||0)-(a.holders||0));
+async function fetchTokens(){
+  try{
+    const r = await fetch('https://data.solanatracker.io/search?market=pumpfun&limit=50', {
+      headers: { 'x-api-key': API_KEY }
+    });
+    const j = await r.json();
+    const tokens = j.data || [];
+    const now = Date.now();
+    // only new tokens <1h
+    allTokens = tokens.filter(t => t.createdAt && (now - t.createdAt)<3600000);
+    allTokens.forEach(t=>t.ageMs = now - t.createdAt);
+    sortAndRender();
+  }catch(e){
+    console.error('fetchTokens error', e);
+    tokenGrid.innerHTML = `<p class="small">Error fetching tokens: ${e.message||e}</p>`;
+  }
+}
 
-  // find max volume for scaling chart
-  let maxVol = 0;
-  tokens.forEach(t=>{ if(t.volumeHistory) t.volumeHistory.forEach(v=>{ if(v>maxVol) maxVol=v; }); });
+function sortAndRender(){
+  const sortBy = sortSelect.value;
+  let sorted = [...allTokens];
+  if(sortBy==='marketCap'){ sorted.sort((a,b)=>(b.marketCapUsd||0)-(a.marketCapUsd||0)); }
+  else if(sortBy==='created'){ sorted.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)); }
+  else if(sortBy==='holders'){ sorted.sort((a,b)=>(b.holders||0)-(a.holders||0)); }
+  renderTokens(sorted);
+}
 
+function renderTokens(tokens){
   tokenGrid.innerHTML = '';
+  if(!tokens.length){ tokenGrid.innerHTML = `<p class="small">No new tokens in the last hour.</p>`; return; }
   tokens.forEach(t=>{
+    const card = document.createElement('div'); card.className='card';
     const mintShort = (t.mint||'').slice(0,6)+'...'+(t.mint||'').slice(-6);
-    const socials = t.socials ? Object.entries(t.socials).map(([k,v])=>`<a href="${v}" target="_blank">${k}</a>`).join(' ') : '';
-    const chartHtml = (t.volumeHistory||[]).map(v=>`<div style="height:${maxVol? (v/maxVol*100) : 0}%"></div>`).join('');
-    const ageStr = t.createdAt ? fmtAge(t.createdAt) : 'N/A';
 
-    const card = document.createElement('div');
-    card.className = 'card';
-    card.innerHTML = `
+    // social links
+    let socialHtml = '';
+    if(t.socials){
+      for(const [k,v] of Object.entries(t.socials)){ socialHtml+=`<a href="${v}" target="_blank">${k}</a>`; }
+    }
+
+    card.innerHTML=`
       <div class="token-header">
-        <img src="${t.image||''}" alt="${t.symbol||''}">
-        <div class="token-title">${t.name||'N/A'} (${t.symbol||'N/A'}) <span class="badge">NEW</span></div>
+        <img class="logo" src="${t.image||''}" alt="${t.symbol||''}"/>
+        <div>
+          <div class="title">${t.name || 'N/A'} (${t.symbol || 'N/A'})</div>
+          <div class="small">Contract: <a href="https://solscan.io/token/${t.mint}" target="_blank">${mintShort}</a>
+            <span class="copy-btn" data-mint="${t.mint}">📋</span>
+          </div>
+        </div>
       </div>
-      <div class="metrics">
-        <div class="metric"><div class="label">Market Cap</div><div class="value">${fmtUSD(t.marketCapUsd)}</div></div>
-        <div class="metric"><div class="label">Liquidity</div><div class="value">${fmtUSD(t.liquidityUsd)}</div></div>
-        <div class="metric"><div class="label">Holders</div><div class="value">${t.holders||0}</div></div>
-        <div class="metric"><div class="label">Age</div><div class="value">${ageStr}</div></div>
-      </div>
-      <div class="chart">${chartHtml}</div>
-      <div class="socials">${socials}</div>
-      <div class="small">Contract: <a href="https://solscan.io/token/${t.mint}" target="_blank">${mintShort}</a></div>
+      <div class="metric">Market Cap: $${(t.marketCapUsd||0).toLocaleString()}</div>
+      <div class="metric">Liquidity: $${(t.liquidityUsd||0).toLocaleString()}</div>
+      <div class="metric small">Age: ${formatAge(t.ageMs)}</div>
+      ${socialHtml ? `<div class="social-links">${socialHtml}</div>` : ''}
     `;
     tokenGrid.appendChild(card);
   });
+
+  document.querySelectorAll('.copy-btn').forEach(btn=>{
+    btn.onclick = ()=>{
+      const m = btn.getAttribute('data-mint');
+      if(navigator.clipboard) navigator.clipboard.writeText(m);
+      btn.textContent='✅';
+      setTimeout(()=>btn.textContent='📋',1000);
+    };
+  });
 }
 
-// Sorting buttons
-document.getElementById('sortMcap').onclick = function(){ renderTokens('mcap'); setActive(this); };
-document.getElementById('sortAge').onclick = function(){ renderTokens('age'); setActive(this); };
-document.getElementById('sortHolders').onclick = function(){ renderTokens('holders'); setActive(this); };
-function setActive(btn){
-  document.querySelectorAll('.controls button').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-}
+sortSelect.onchange = sortAndRender;
 
-// Initial load + loop
 fetchTokens();
-setInterval(fetchTokens, REFRESH_MS);
+setInterval(fetchTokens,5000);
 </script>
 
 </body>
