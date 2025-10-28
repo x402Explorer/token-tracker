@@ -3,87 +3,44 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Pump.Fun Token Radar</title>
+<title>PumpFun + SolanaTracker Explorer</title>
 <style>
-body {
-  margin: 0;
-  font-family: Arial, sans-serif;
-  background: #0f0f13;
-  color: #fff;
-  padding: 12px;
-}
-h1 {
-  text-align: center;
-  margin-bottom: 16px;
-  color: #55ff99;
-}
-.controls {
-  display:flex;
-  flex-wrap:wrap;
-  justify-content:center;
-  gap:12px;
-  margin-bottom:12px;
-}
-select {
-  background:#1b1b1f;
-  color:#fff;
-  border:1px solid rgba(255,255,255,0.05);
-  border-radius:6px;
-  padding:6px 10px;
-}
-.token-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill,minmax(320px,1fr));
-  gap: 12px;
-}
-.card {
-  background: #1b1b1f;
-  border-radius: 12px;
-  padding: 12px;
-  border: 1px solid rgba(255,255,255,0.05);
-  transition: transform 0.15s;
-}
-.card:hover {
-  transform: translateY(-4px);
-  box-shadow:0 10px 30px rgba(0,0,0,0.4);
-}
-.token-header {
-  display:flex; align-items:center; gap:10px; margin-bottom:8px;
-}
-.logo {
-  width:48px; height:48px; border-radius:10px; object-fit:cover; background:#07070a;
-}
-.title { font-weight:700; font-size:1.05em;}
-.small { font-size:12px; color:#aaa;}
-.copy-btn {cursor:pointer; color:#55ff99; margin-left:6px;}
-.metric {margin-top:6px;}
-.social-links {margin-top:6px;}
-.social-links a {margin-right:8px;color:#55ff99;text-decoration:none;}
+body{margin:0;padding:12px;font-family:Arial;background:#0f0f13;color:#fff;}
+h1{text-align:center;margin-bottom:16px;color:#55ff99;}
+.controls{display:flex;justify-content:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;}
+.select-sort,.select-time{background:#1b1b1f;color:#fff;border:1px solid rgba(255,255,255,0.03);border-radius:6px;padding:6px 10px;}
+.token-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;}
+.card{background:#1b1b1f;border-radius:12px;padding:12px;border:1px solid rgba(255,255,255,0.03);transition: transform 0.15s;}
+.card:hover{transform:translateY(-4px);box-shadow:0 10px 30px rgba(0,0,0,0.5);}
+.token-header{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+.logo{width:48px;height:48px;border-radius:10px;object-fit:cover;background:#07070a;}
+.title{font-weight:700;font-size:1.1em;}
+.small{font-size:12px;color:#aaa;}
+.copy-btn{cursor:pointer;color:#55ff99;margin-left:6px;}
+.metric{margin-top:6px;}
+.social-links a{margin-right:8px;color:#55ff99;text-decoration:none;}
 </style>
 </head>
 <body>
 
-<h1>Pump.Fun Token Radar</h1>
-
+<h1>PumpFun + SolanaTracker Explorer</h1>
 <div class="controls">
   <label>Sort by:
-    <select id="sortSelect">
+    <select id="sortSelect" class="select-sort">
       <option value="created">Newest</option>
       <option value="marketCap">Market Cap</option>
       <option value="holders">Holders</option>
-      <option value="liquidity">Liquidity</option>
     </select>
   </label>
-  <label>Age filter:
-    <select id="timeFilter">
-      <option value="3600000">Last 1h</option>
-      <option value="14400000">Last 4h</option>
-      <option value="28800000">Last 8h</option>
-      <option value="43200000">Last 12h</option>
-      <option value="86400000">Last 24h</option>
-      <option value="604800000">Last 1w</option>
-      <option value="2592000000">Last 1mo</option>
-      <option value="0">All</option>
+  <label>Time filter:
+    <select id="timeSelect" class="select-time">
+      <option value="1h">1h</option>
+      <option value="4h">4h</option>
+      <option value="8h">8h</option>
+      <option value="12h">12h</option>
+      <option value="24h">24h</option>
+      <option value="7d">1w</option>
+      <option value="30d">1M</option>
     </select>
   </label>
 </div>
@@ -93,99 +50,115 @@ select {
 </div>
 
 <script>
-const API_KEY = 'e6d255f4-d3ce-457f-b149-883b2f3e93e2';
+const PUMP_API_KEY = 'e6d255f4-d3ce-457f-b149-883b2f3e93e2';
+const TRACKER_API_KEY = 'c89d3b53-74e2-42ac-8c0c-8b4f393d60bb';
 const tokenGrid = document.getElementById('tokenGrid');
 const sortSelect = document.getElementById('sortSelect');
-const timeFilter = document.getElementById('timeFilter');
+const timeSelect = document.getElementById('timeSelect');
 let allTokens = [];
 
 function formatAge(ms){
-  let sec = Math.floor(ms/1000);
-  const h = Math.floor(sec/3600); sec%=3600;
-  const m = Math.floor(sec/60); sec%=60;
-  return `${h}h ${m}m ${sec}s`;
+  let totalSec=Math.floor(ms/1000);
+  const h=Math.floor(totalSec/3600); totalSec%=3600;
+  const m=Math.floor(totalSec/60); totalSec%=60;
+  const s=totalSec;
+  return `${h}h ${m}m ${s}s`;
 }
 
-// === Fetch up to 10k tokens with pagination ===
-async function fetchAllTokens(limit = 10000){
-  let all = [];
-  let cursor = null;
-  const perPage = 100;
-  const maxPages = Math.ceil(limit / perPage);
-
-  for(let i=0;i<maxPages;i++){
-    let url = `https://data.solanatracker.io/markets?market=pumpfun&limit=${perPage}`;
-    if(cursor) url += `&cursor=${encodeURIComponent(cursor)}`;
-    const res = await fetch(url, { headers: {'x-api-key': API_KEY} });
-    if(!res.ok){ console.warn("Fetch failed",res.status); break; }
-    const j = await res.json();
-    const data = j.data || [];
-    all.push(...data);
-    cursor = j.nextCursor;
-    if(!cursor) break;
-    await new Promise(r=>setTimeout(r,150)); // respect API
+function timeToMs(value){
+  const now=Date.now();
+  switch(value){
+    case '1h': return now-3600000;
+    case '4h': return now-14400000;
+    case '8h': return now-28800000;
+    case '12h': return now-43200000;
+    case '24h': return now-86400000;
+    case '7d': return now-604800000;
+    case '30d': return now-2592000000;
+    default: return 0;
   }
-  return all;
 }
 
-function filterAndRender(){
-  const maxAge = parseInt(timeFilter.value);
-  const now = Date.now();
-  let tokens = [...allTokens];
-  if(maxAge>0){
-    tokens = tokens.filter(t=>t.createdAt && now - t.createdAt <= maxAge);
+async function fetchTokens(){
+  try{
+    // Step1: get tokens from Pump.fun
+    const rPump = await fetch('https://data.solanatracker.io/search?market=pumpfun&limit=10000',{
+      headers:{'x-api-key':PUMP_API_KEY}
+    });
+    const jPump = await rPump.json();
+    const tokensPump = jPump.data || [];
+    const now = Date.now();
+    allTokens = tokensPump.map(t=>{
+      t.ageMs=now-(t.createdAt||now);
+      return t;
+    });
+
+    // Step2: enrich with SolanaTracker for metrics
+    for(const t of allTokens){
+      try{
+        const rTrack = await fetch(`https://data.solanatracker.io/search?symbol=${t.symbol}&limit=1`,{
+          headers:{'x-api-key':TRACKER_API_KEY}
+        });
+        const jTrack=await rTrack.json();
+        const info=jTrack.data?.[0];
+        if(info){
+          t.marketCapUsd=info.marketCapUsd||t.marketCapUsd||0;
+          t.liquidityUsd=info.liquidityUsd||t.liquidityUsd||0;
+          t.holders=info.holders||t.holders||0;
+          t.socials=info.socials||t.socials||{};
+        }
+      }catch(e){ console.warn('Tracker fetch fail for',t.symbol); }
+    }
+
+    sortAndRender();
+  }catch(e){
+    console.error('fetchTokens error',e);
+    tokenGrid.innerHTML=`<p class="small">Error fetching tokens: ${e.message||e}</p>`;
   }
+}
 
-  const sortBy = sortSelect.value;
-  if(sortBy==='marketCap') tokens.sort((a,b)=>(b.marketCapUsd||0)-(a.marketCapUsd||0));
-  else if(sortBy==='holders') tokens.sort((a,b)=>(b.holders||0)-(a.holders||0));
-  else if(sortBy==='liquidity') tokens.sort((a,b)=>(b.liquidityUsd||0)-(a.liquidityUsd||0));
-  else tokens.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
-
-  renderTokens(tokens);
+function sortAndRender(){
+  const sortBy=sortSelect.value;
+  const filterTime=timeToMs(timeSelect.value);
+  let sorted=allTokens.filter(t=>(t.createdAt||0)>=filterTime);
+  if(sortBy==='marketCap'){ sorted.sort((a,b)=>(b.marketCapUsd||0)-(a.marketCapUsd||0)); }
+  else if(sortBy==='created'){ sorted.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)); }
+  else if(sortBy==='holders'){ sorted.sort((a,b)=>(b.holders||0)-(a.holders||0)); }
+  renderTokens(sorted);
 }
 
 function renderTokens(tokens){
-  tokenGrid.innerHTML = '';
-  if(!tokens.length){
-    tokenGrid.innerHTML = `<p class="small">No tokens match this filter.</p>`;
-    return;
-  }
-  const now = Date.now();
+  tokenGrid.innerHTML='';
+  if(!tokens.length){ tokenGrid.innerHTML=`<p class="small">No tokens found for selected time.</p>`; return; }
   tokens.forEach(t=>{
-    const card = document.createElement('div'); card.className='card';
-    const mint = t.mint || '';
-    const mintShort = mint ? mint.slice(0,6)+'...'+mint.slice(-6) : 'N/A';
-    const age = t.createdAt ? formatAge(now - t.createdAt) : '—';
-    let socials = '';
+    const card=document.createElement('div'); card.className='card';
+    const mintShort=(t.mint||'').slice(0,6)+'...'+(t.mint||'').slice(-6);
+    let socialHtml='';
     if(t.socials){
       for(const [k,v] of Object.entries(t.socials)){
-        socials += `<a href="${v}" target="_blank">${k}</a>`;
+        socialHtml+=`<a href="${v}" target="_blank">${k}</a>`;
       }
     }
-    card.innerHTML = `
+    card.innerHTML=`
       <div class="token-header">
-        <img class="logo" src="${t.image||''}" alt="${t.symbol||''}">
+        <img class="logo" src="${t.image||''}" alt="${t.symbol||''}"/>
         <div>
           <div class="title">${t.name||'N/A'} (${t.symbol||'N/A'})</div>
-          <div class="small">CA: <a href="https://solscan.io/token/${mint}" target="_blank">${mintShort}</a>
-            <span class="copy-btn" data-mint="${mint}">📋</span>
-          </div>
+          <div class="small">Contract: <a href="https://solscan.io/token/${t.mint}" target="_blank">${mintShort}</a> <span class="copy-btn" data-mint="${t.mint}">📋</span></div>
         </div>
       </div>
       <div class="metric">Market Cap: $${(t.marketCapUsd||0).toLocaleString()}</div>
       <div class="metric">Liquidity: $${(t.liquidityUsd||0).toLocaleString()}</div>
-      <div class="metric small">Holders: ${t.holders||0}</div>
-      <div class="metric small">Age: ${age}</div>
-      <div class="metric small"><a href="https://dexscreener.com/solana/${mint}" target="_blank" style="color:#55ff99;">View Chart ↗</a></div>
-      ${socials ? `<div class="social-links">${socials}</div>` : ''}
+      <div class="metric small">Age: ${formatAge(t.ageMs)}</div>
+      ${socialHtml?`<div class="social-links">${socialHtml}</div>`:''}
+      <div class="metric"><a href="https://dexscreener.com/solana/${t.mint}" target="_blank">View Chart</a></div>
     `;
     tokenGrid.appendChild(card);
   });
 
   document.querySelectorAll('.copy-btn').forEach(btn=>{
-    btn.onclick = ()=>{
-      const m = btn.getAttribute('data-mint');
+    btn.onclick=()=>{
+      const m=btn.getAttribute('data-mint');
       if(navigator.clipboard) navigator.clipboard.writeText(m);
       btn.textContent='✅';
       setTimeout(()=>btn.textContent='📋',1000);
@@ -193,17 +166,11 @@ function renderTokens(tokens){
   });
 }
 
-async function init(){
-  tokenGrid.innerHTML = '<p>Loading 10,000 tokens...</p>';
-  allTokens = await fetchAllTokens(10000);
-  filterAndRender();
-}
+sortSelect.onchange=sortAndRender;
+timeSelect.onchange=sortAndRender;
 
-sortSelect.onchange = filterAndRender;
-timeFilter.onchange = filterAndRender;
-
-init();
-setInterval(init, 300000); // refresh every 5min
+fetchTokens();
+setInterval(fetchTokens,5000);
 </script>
 
 </body>
