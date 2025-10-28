@@ -17,6 +17,19 @@ h1 {
   margin-bottom: 16px;
   color: #55ff99;
 }
+.controls {
+  display:flex;
+  justify-content:center;
+  gap:12px;
+  margin-bottom:12px;
+}
+.select-sort {
+  background:#1b1b1f;
+  color:#fff;
+  border:1px solid rgba(255,255,255,0.03);
+  border-radius:6px;
+  padding:6px 10px;
+}
 .token-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill,minmax(320px,1fr));
@@ -43,6 +56,16 @@ h1 {
 <body>
 
 <h1>Pump.Fun New Tokens</h1>
+<div class="controls">
+  <label>Sort by:
+    <select id="sortSelect" class="select-sort">
+      <option value="created">Newest</option>
+      <option value="marketCap">Market Cap</option>
+      <option value="holders">Holders</option>
+    </select>
+  </label>
+</div>
+
 <div id="tokenGrid" class="token-grid">
   <p>Loading tokens...</p>
 </div>
@@ -50,7 +73,9 @@ h1 {
 <script>
 const API_KEY = 'e6d255f4-d3ce-457f-b149-883b2f3e93e2';
 const tokenGrid = document.getElementById('tokenGrid');
-let solPrice = 30; // fallback
+const sortSelect = document.getElementById('sortSelect');
+let solPrice = 30; 
+let allTokens = [];
 
 async function fetchSolPrice(){
   try{
@@ -71,14 +96,26 @@ async function fetchTokens(){
     });
     const j = await r.json();
     const tokens = j.data || [];
-    // filter new tokens: created within last 1 hour
     const now = Date.now();
-    const newTokens = tokens.filter(t => t.createdAt && (now - t.createdAt)<3600000);
-    renderTokens(newTokens);
+    allTokens = tokens.filter(t => t.createdAt && (now - t.createdAt)<3600000); // new tokens <1h
+    sortAndRender();
   }catch(e){
     console.error('fetchTokens error', e);
     tokenGrid.innerHTML = `<p class="small">Error fetching tokens: ${e.message||e}</p>`;
   }
+}
+
+function sortAndRender(){
+  const sortBy = sortSelect.value;
+  let sorted = [...allTokens];
+  if(sortBy==='marketCap'){
+    sorted.sort((a,b)=>(b.marketCapUsd||0)-(a.marketCapUsd||0));
+  }else if(sortBy==='created'){
+    sorted.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  }else if(sortBy==='holders'){
+    sorted.sort((a,b)=>(b.holders||0)-(a.holders||0));
+  }
+  renderTokens(sorted);
 }
 
 function renderTokens(tokens){
@@ -102,11 +139,11 @@ function renderTokens(tokens){
       </div>
       <div class="metric">Market Cap: ${fmtUSD(t.marketCapUsd)}</div>
       <div class="metric">Price: ${fmtUSD(t.priceUsd)} / ${fmtSOL(t.priceUsd)}</div>
+      <div class="metric small">Holders: ${t.holders||0}</div>
     `;
     tokenGrid.appendChild(card);
   });
 
-  // copy behavior
   document.querySelectorAll('.copy-btn').forEach(btn=>{
     btn.onclick = ()=>{
       const m = btn.getAttribute('data-mint');
@@ -117,7 +154,8 @@ function renderTokens(tokens){
   });
 }
 
-// initial + loop every 5s
+sortSelect.onchange = sortAndRender;
+
 fetchTokens();
 setInterval(fetchTokens, 5000);
 </script>
