@@ -16,6 +16,7 @@
   tr.green { background:#1b2a1b; }
   tr.yellow { background:#3a3a1a; }
   tr.red { background:#3a1a1a; }
+  td img { border-radius:50%; vertical-align:middle; }
   a { color:#55ff99; text-decoration:none; }
   a:hover { text-decoration:underline; }
 </style>
@@ -25,16 +26,18 @@
 <h1>Degen Radar</h1>
 
 <div class="controls">
-  <button onclick="sortBy('buzz')">Sort by Buzz</button>
+  <button onclick="sortBy('hot')">Sort by Hot</button>
   <button onclick="sortBy('volume')">Sort by Volume</button>
   <button onclick="sortBy('risk')">Sort by Risk</button>
+  <button onclick="toggleCurrency()">Toggle SOL / $</button>
 </div>
 
 <table id="tokenTable">
   <thead>
     <tr>
+      <th>Logo</th>
       <th>Name (Symbol)</th>
-      <th>Buzz</th>
+      <th>Hot</th>
       <th>Volume</th>
       <th>Age</th>
       <th>Dev %</th>
@@ -45,15 +48,17 @@
     </tr>
   </thead>
   <tbody>
-    <tr><td colspan="9">Loading tokens...</td></tr>
+    <tr><td colspan="10">Loading tokens...</td></tr>
   </tbody>
 </table>
 
 <script>
 const trackerApiKey = 'e6d255f4-d3ce-457f-b149-883b2f3e93e2';
 let allTokens = [];
-let currentSort = 'buzz';
+let currentSort = 'hot';
+let showInUSD = true;
 
+// Fetch tokens from API
 async function fetchTokens() {
   try {
     const res = await fetch('https://data.solanatracker.io/search?name=a&symbol=a', {
@@ -64,36 +69,53 @@ async function fetchTokens() {
     updateTable();
   } catch(e) {
     console.error(e);
-    document.querySelector('#tokenTable tbody').innerHTML = '<tr><td colspan="9">Error fetching tokens</td></tr>';
+    document.querySelector('#tokenTable tbody').innerHTML = '<tr><td colspan="10">Error fetching tokens</td></tr>';
   }
 }
 
+// Compute Hot metric and risk
 function computeMetrics(token) {
   const now = Date.now();
   const ageHours = token.createdAt ? (now - token.createdAt)/3600000 : 1;
-  const buzz = (token.volume || 0)/ageHours;
-  let riskScore = 0; // 0=green,1=yellow,2=red
+
+  // Price change factor, fallback to 0 if not provided
+  const priceChange = token.priceChange1h || 0;
+  const priceFactor = 1 + (priceChange / 100);
+
+  // Hot = volume * priceFactor / age
+  const hot = ((token.volume || 0) * priceFactor) / ageHours;
+
+  // Risk scoring
+  let riskScore = 0;
   if((token.dev || 0) > 20 || (token.liquidityUsd || 0) < 100) riskScore = 2;
   else if((token.dev || 0) > 10 || (token.liquidityUsd || 0) < 500) riskScore = 1;
-  return {buzz, riskScore, ageHours};
+
+  return { hot, riskScore, ageHours };
 }
 
-function updateTable() {
-  allTokens.forEach(t => {
+// Format value as USD or SOL
+function formatValue(value){
+  if(showInUSD) return '$' + (value||0).toFixed(2);
+  return (value/1).toFixed(4) + ' SOL'; // adjust if you want actual conversion
+}
+
+// Update table
+function updateTable(){
+  allTokens.forEach(t=>{
     const m = computeMetrics(t);
-    t.buzz = m.buzz;
+    t.hot = m.hot;
     t.riskScore = m.riskScore;
     t.ageHours = m.ageHours;
   });
 
-  if(currentSort==='buzz') allTokens.sort((a,b)=>b.buzz-a.buzz);
+  if(currentSort==='hot') allTokens.sort((a,b)=>b.hot-a.hot);
   if(currentSort==='volume') allTokens.sort((a,b)=>(b.volume||0)-(a.volume||0));
   if(currentSort==='risk') allTokens.sort((a,b)=>a.riskScore-b.riskScore);
 
   const tbody = document.querySelector('#tokenTable tbody');
   tbody.innerHTML = '';
-  if(allTokens.length===0) {
-    tbody.innerHTML='<tr><td colspan="9">No tokens found</td></tr>';
+  if(allTokens.length===0){
+    tbody.innerHTML='<tr><td colspan="10">No tokens found</td></tr>';
     return;
   }
 
@@ -102,23 +124,26 @@ function updateTable() {
     const row = document.createElement('tr');
     row.className = riskClass;
     row.innerHTML=`
+      <td><img src="${t.image||''}" width="32" height="32" alt="${t.symbol}"></td>
       <td>${t.name||'N/A'} (${t.symbol||'N/A'})</td>
-      <td>${t.buzz.toFixed(2)}</td>
-      <td>${t.volume||0}</td>
+      <td>${t.hot.toFixed(2)}</td>
+      <td>${formatValue(t.volume)}</td>
       <td>${t.ageHours.toFixed(1)}h</td>
       <td>${t.dev||0}%</td>
-      <td>${t.liquidityUsd||0}</td>
+      <td>${formatValue(t.liquidityUsd)}</td>
       <td>${riskClass}</td>
       <td><a href="${t.socials?.twitter||'#'}" target="_blank">${t.socials?.twitter?'Link':'N/A'}</a></td>
-      <td>$${t.priceUsd||'N/A'}</td>
+      <td>${formatValue(t.priceUsd)}</td>
     `;
     tbody.appendChild(row);
   });
 }
 
+// Sorting and toggle functions
 function sortBy(field){ currentSort=field; updateTable(); }
+function toggleCurrency(){ showInUSD = !showInUSD; updateTable(); }
 
-// Initial fetch + auto-refresh every 30s
+// Initial fetch and auto-refresh every 30s
 fetchTokens();
 setInterval(fetchTokens,30000);
 </script>
